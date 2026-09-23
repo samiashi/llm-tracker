@@ -31,11 +31,11 @@ func main() { os.Exit(run()) }
 func run() int {
 	addr := flag.String("addr", "127.0.0.1:8790", "listen address")
 	dsn := flag.String("db", "llm-tracker.db", "sqlite path")
-	pruneDays := flag.Int("prune", 0, "roll up and delete raw events older than N days, then exit")
 	retainDays := flag.Int("retain", 0,
 		"delete raw events older than N days, rolling each day up first; 0 keeps everything")
 	healthcheck := flag.Bool("healthcheck", false, "probe a running server on this host, then exit")
-	revoke := flag.String("revoke", "", "revoke every ingest token enrolled by this GitHub login, then exit")
+	revoke := flag.String("revoke", "",
+		"revoke every ingest token enrolled by this GitHub login and release its machines, then exit")
 	verbose := flag.Bool("v", false, "verbose logging")
 	flag.Parse()
 
@@ -58,16 +58,6 @@ func run() int {
 	}
 	defer database.Close()
 	log.Info("price table", "version", database.PriceTableVersion())
-
-	if *pruneDays > 0 {
-		res, err := database.Prune(context.Background(), pruneCutoff(*pruneDays))
-		if err != nil {
-			log.Error("prune", "err", err)
-			return 1
-		}
-		logPruned(log, res)
-		return 0
-	}
 
 	if *revoke != "" {
 		r, err := database.RevokeTokens(context.Background(), *revoke)
@@ -271,7 +261,9 @@ func pruneDaily(ctx context.Context, d *db.DB, retain int, log *slog.Logger) {
 			return
 		}
 		if res.DaysRolled > 0 {
-			logPruned(log, res)
+			log.Info("pruned", "cutoff", res.Cutoff, "days", res.DaysRolled,
+				"rollup_rows", res.RollupRows, "events_pruned", res.EventsPruned,
+				"machines_pruned", res.MachinesPruned, "vacuumed", res.Vacuumed)
 		}
 		if res.VacuumErr != nil {
 			log.Warn("pruned, but returning the freed space to the disk failed; the next prune retries",
@@ -295,11 +287,4 @@ func pruneDaily(ctx context.Context, d *db.DB, retain int, log *slog.Logger) {
 // pruneCutoff is the first UTC day a prune keeping the last days days leaves raw.
 func pruneCutoff(days int) string {
 	return time.Now().UTC().AddDate(0, 0, -days).Format(time.DateOnly)
-}
-
-// logPruned reports a prune the same way from -prune and from -retain.
-func logPruned(log *slog.Logger, res *db.PruneResult) {
-	log.Info("pruned", "cutoff", res.Cutoff, "days", res.DaysRolled,
-		"rollup_rows", res.RollupRows, "events_pruned", res.EventsPruned,
-		"machines_pruned", res.MachinesPruned, "vacuumed", res.Vacuumed)
 }
