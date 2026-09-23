@@ -18,12 +18,13 @@ import (
 
 const (
 	// maxIngestBytes bounds a batch's JSON on the wire and again after
-	// decompression; a first-run backfill batch fits well inside it.
-	maxIngestBytes = 64 << 20
-	// maxBatchItems bounds each list in a batch. The agent sends 2,000
-	// events; the byte limit alone admits millions of minimal elements,
-	// each far larger decoded than on the wire.
-	maxBatchItems = 50_000
+	// decompression. An agent's batch of 2,000 events is under 2 MiB, and
+	// the server runs on a VM with 2 GB of memory.
+	maxIngestBytes = 16 << 20
+	// maxConcurrentIngests bounds the batches decoded at once, each of which
+	// may hold maxIngestBytes of JSON and the events built from it. Ingest
+	// writes one batch at a time anyway.
+	maxConcurrentIngests = 4
 	// maxFieldLen is far above any real string on the wire, so clipping
 	// only ever touches corrupt input.
 	maxFieldLen = 512
@@ -65,6 +66,16 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 			errors.New("ingest requires Content-Type: application/json"))
 		return
 	}
+	select {
+	case ingestSlots <- struct{}{}:
+		defer func() { <-ingestSlots }()
+	default:
+		// The agent keeps the batch and sends it again on its next pass.
+		w.Header().Set("Retry-After", "30")
+		writeErr(w, http.StatusServiceUnavailable,
+			errors.New("the server is busy with other uploads; try again shortly"))
+		return
+	}
 
 	// The byte limit applies after decompression too: a batch gzips about
 	// 17x, and padding far more.
@@ -84,13 +95,16 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(src).Decode(&in); err != nil {
 		// 413 tells the agent to send less; a 400 would say its JSON is corrupt.
 		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) || errors.Is(err, errTooManyItems) {
+		var tooLong *listTooLong
+		switch {
+		case errors.As(err, &tooBig):
 			writeErr(w, http.StatusRequestEntityTooLarge, fmt.Errorf(
-				"batch is larger than the limit of %d bytes or %d items in one list",
-				maxIngestBytes, maxBatchItems))
-			return
+				"a batch is at most %d MiB, before and after decompression", maxIngestBytes>>20))
+		case errors.As(err, &tooLong):
+			writeErr(w, http.StatusRequestEntityTooLarge, tooLong)
+		default:
+			writeErr(w, http.StatusBadRequest, errors.New("malformed request body"))
 		}
-		writeErr(w, http.StatusBadRequest, errors.New("malformed request body"))
 		return
 	}
 	if in.V > schema.Version {
@@ -135,8 +149,8 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 // ingestBody is a Batch as it arrives. Each list shadows the embedded one
 // with a bounded type (encoding/json prefers the shallower field), and
 // handleIngest stores only what batch() builds from them. A list added to
-// schema.Batch must be shadowed here too; TestEveryListInABatchIsBounded
-// fails until it is.
+// schema.Batch must be shadowed here too, with a limit in listLimit;
+// TestEveryListInABatchIsBounded fails until it is.
 type ingestBody struct {
 	schema.Batch
 	Events        bounded[schema.Event]         `json:"events"`
@@ -229,11 +243,42 @@ func clip(s string, n int) string {
 	return string(r[:n])
 }
 
-var errTooManyItems = errors.New("a list in the batch is longer than the limit")
+// ingestSlots holds a slot for each batch being decoded. It is the process's
+// memory it protects, so it is the process's bound, whichever Server asks.
+var ingestSlots = make(chan struct{}, maxConcurrentIngests)
 
-// bounded is a JSON array that stops decoding at maxBatchItems, instead of
-// materialising the whole slice to be measured afterwards.
+// listLimit is how many elements a batch's list of T may hold, and what the
+// 413 calls them: near what an agent sends -- 2,000 events a batch, the
+// logins it can see, the harnesses it found -- since the byte limit alone
+// admits millions of minimal elements, each far larger decoded than on the
+// wire.
+func listLimit[T any]() (noun string, n int) {
+	switch any(*new(T)).(type) {
+	case schema.Event:
+		return "events", 5_000
+	case schema.UnknownSource:
+		return "unknown sources", 64
+	case schema.Account:
+		return "accounts", 16
+	}
+	return "items", 0
+}
+
+// listTooLong is a list in a batch past its limit.
+type listTooLong struct {
+	noun  string
+	limit int
+}
+
+func (e *listTooLong) Error() string {
+	return fmt.Sprintf("a batch carries at most %d %s", e.limit, e.noun)
+}
+
+// bounded is a JSON array that stops decoding at its element type's limit,
+// instead of materialising the whole slice to be measured afterwards.
 type bounded[T any] []T
+
+func (bounded[T]) limit() (string, int) { return listLimit[T]() }
 
 func (b *bounded[T]) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -247,9 +292,10 @@ func (b *bounded[T]) UnmarshalJSON(data []byte) error {
 	if d, ok := tok.(json.Delim); !ok || d != '[' {
 		return errors.New("expected an array")
 	}
+	noun, limit := b.limit()
 	for dec.More() {
-		if len(*b) >= maxBatchItems {
-			return errTooManyItems
+		if len(*b) >= limit {
+			return &listTooLong{noun, limit}
 		}
 		var v T
 		if err := dec.Decode(&v); err != nil {

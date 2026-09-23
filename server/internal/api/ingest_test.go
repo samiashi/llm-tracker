@@ -295,33 +295,71 @@ func TestIngestRejectsCountsWhoseSumWouldOverflow(t *testing.T) {
 	}
 }
 
-// The lists are read off schema.Batch, so one added later is covered.
+// The lists are read off schema.Batch, so one added later is covered: each
+// must be shadowed in ingestBody by a bounded list that takes what an agent
+// sends and refuses one element past its limit, saying which limit.
 func TestEveryListInABatchIsBounded(t *testing.T) {
-	bt := reflect.TypeFor[schema.Batch]()
-	for i := range bt.NumField() {
-		f := bt.Field(i)
-		if f.Type.Kind() != reflect.Slice {
-			continue
-		}
-		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+	// The most an agent sends in one batch: its batch of events, the
+	// harnesses scan.go can report, the logins identity reads.
+	agentSends := map[string]int{"events": 2_000, "unknown_sources": 17, "accounts": 2}
+	shadows := map[string]reflect.Type{}
+	for f := range reflect.TypeFor[ingestBody]().Fields() {
+		shadows[jsonName(f)] = f.Type
+	}
+	for f := range reflect.TypeFor[schema.Batch]().Fields() {
+		name := jsonName(f)
 		// Not read since quota readings were dropped; remove with the field.
-		if name == "quota" {
+		if f.Type.Kind() != reflect.Slice || name == "quota" {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
-			var b strings.Builder
-			b.WriteString(`{"v":1,"machine_id":"m","` + name + `":[null`)
-			for range maxBatchItems {
-				b.WriteString(",null")
+			b, ok := reflect.Zero(shadows[name]).Interface().(interface{ limit() (string, int) })
+			if !ok {
+				t.Fatalf("%q is not shadowed by a bounded list in ingestBody", name)
 			}
-			b.WriteString(`]}`)
-
-			rec := postIngest(t, newServer(t), []byte(b.String()), true)
-			if rec.Code != http.StatusRequestEntityTooLarge {
-				t.Fatalf("%d elements in %q: status %d, want 413", maxBatchItems+1, name, rec.Code)
+			noun, limit := b.limit()
+			if limit < agentSends[name] || limit > 10*agentSends[name] {
+				t.Fatalf("%q admits %d; an agent sends up to %d, and the limit belongs near that",
+					name, limit, agentSends[name])
+			}
+			list := func(n int) []byte {
+				return []byte(`{"v":1,"machine_id":"m","` + name + `":[` +
+					strings.TrimSuffix(strings.Repeat("null,", n), ",") + `]}`)
+			}
+			if rec := postIngest(t, newServer(t), list(limit), true); rec.Code != http.StatusOK {
+				t.Fatalf("%d %s: status %d, want 200 (%s)", limit, noun, rec.Code, rec.Body)
+			}
+			rec := postIngest(t, newServer(t), list(limit+1), true)
+			if rec.Code != http.StatusRequestEntityTooLarge ||
+				!strings.Contains(rec.Body.String(), fmt.Sprintf("at most %d %s", limit, noun)) {
+				t.Fatalf("%d %s: status %d %s, want 413 naming the limit", limit+1, noun, rec.Code, rec.Body)
 			}
 		})
 	}
+}
+
+func jsonName(f reflect.StructField) string {
+	name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+	return name
+}
+
+// Each batch can hold the byte limit of JSON while it is decoded, so only a
+// few are taken at once; the next is told to come back, and its agent keeps
+// it until then.
+func TestIngestTakesOnlyAFewBatchesAtOnce(t *testing.T) {
+	s := newServer(t)
+	for range cap(ingestSlots) {
+		ingestSlots <- struct{}{}
+	}
+	rec := postIngest(t, s, batchOf(t), false)
+	for range cap(ingestSlots) {
+		<-ingestSlots
+	}
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("with every slot taken: %d, Retry-After %q; want 503 with Retry-After",
+			rec.Code, rec.Header().Get("Retry-After"))
+	}
+	ack(t, postIngest(t, s, batchOf(t), false))
 }
 
 // Agents installed before quota readings were dropped still send them, and
@@ -372,6 +410,8 @@ func TestIngestByteLimitAppliesAfterDecompression(t *testing.T) {
 		want int
 	}{
 		{"plain, past the limit", func() []byte { return doc(maxIngestBytes+1, "") }, false, http.StatusRequestEntityTooLarge},
+		// An agent's batch is under 2 MiB, and each one in flight is held whole.
+		{"plain, 17 MiB", func() []byte { return doc(17<<20, "") }, false, http.StatusRequestEntityTooLarge},
 		{"gzip, decompresses past the limit", func() []byte { return doc(maxIngestBytes+1, "") }, true, http.StatusRequestEntityTooLarge},
 		{"gzip, exactly at the limit", func() []byte { return doc(maxIngestBytes, "") }, true, http.StatusOK},
 		{"gzip, trailing whitespace", func() []byte { return doc(1000, strings.Repeat("\n", 64<<10)) }, true, http.StatusOK},
@@ -380,6 +420,10 @@ func TestIngestByteLimitAppliesAfterDecompression(t *testing.T) {
 			rec := postIngest(t, newServer(t), tc.body(), tc.gz)
 			if rec.Code != tc.want {
 				t.Fatalf("status = %d, want %d (%s)", rec.Code, tc.want, strings.TrimSpace(rec.Body.String()))
+			}
+			if tc.want == http.StatusRequestEntityTooLarge &&
+				!strings.Contains(rec.Body.String(), fmt.Sprintf("at most %d MiB", maxIngestBytes>>20)) {
+				t.Fatalf("the 413 does not name the limit: %s", rec.Body)
 			}
 		})
 	}

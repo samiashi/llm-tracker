@@ -389,9 +389,12 @@ fixed order and never cycled, and no chart uses two y-axes.
   under the batch's machine, and only that machine can move a row it stored.
   `-revoke <login>` withdraws a login's tokens and releases its machines and
   accounts, so a laptop that changes hands can be claimed.
-- Ingest bounds every list in a batch, clips every string, and rejects an
-  event whose counters, timestamp or native cost are implausible. A list added
-  to `schema.Batch` must be shadowed in `ingestBody`; a test fails until it is.
+- Ingest bounds the body at 16 MiB before and after gzip and every list in a
+  batch near what an agent sends, decodes at most four batches at once (a fifth
+  gets 503), clips every string, and rejects an event whose counters,
+  timestamp or native cost are implausible. A list added to `schema.Batch`
+  must be shadowed in `ingestBody`, with a limit in `listLimit`; a test fails
+  until it is.
 - Never log or transmit an OAuth token. `identity` reads them only to name the
   active account. The one exception is `enroll`, which sends the GitHub CLI's
   token to the tracker, once: only over https (loopback excepted), never on
