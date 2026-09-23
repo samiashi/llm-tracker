@@ -113,7 +113,7 @@ func run() error {
 	// agent.log that `install` names, not to launchd's uncapped redirect.
 	var out io.Writer = os.Stderr
 	if cmd == "run" {
-		lf, lerr := config.OpenLog(filepath.Join(*dataDir, "agent.log"), config.DefaultLogMaxBytes)
+		lf, lerr := config.OpenLog(config.LogPath(*dataDir), config.DefaultLogMaxBytes)
 		if lerr != nil {
 			return lerr
 		}
@@ -159,7 +159,7 @@ func run() error {
 }
 
 func openStore(dataDir string) (*store.Store, error) {
-	return store.Open(filepath.Join(dataDir, "agent.db"))
+	return store.Open(store.Path(dataDir))
 }
 
 // defaultDataDir is where state lives without -data.

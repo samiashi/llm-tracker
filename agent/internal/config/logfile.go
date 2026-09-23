@@ -22,6 +22,10 @@ type RotatingFile struct {
 	f    *os.File
 }
 
+// LogPath is the daemon's log in a data directory: the file it writes and the
+// one launchd's plist names.
+func LogPath(dataDir string) string { return filepath.Join(dataDir, "agent.log") }
+
 // DefaultLogMaxBytes bounds one generation. Two of these is the worst case on
 // disk.
 const DefaultLogMaxBytes = 8 << 20

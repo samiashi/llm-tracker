@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/samiashi/llm-tracker/agent/internal/config"
 )
 
 const Label = "io.github.samiashi.llm-tracker"
@@ -52,7 +54,7 @@ func plist(binPath, dataDir string) string {
 </dict>
 </plist>
 `, Label, xmlText(binPath), xmlText(dataDir),
-		xmlText(filepath.Join(dataDir, "agent.log")),
+		xmlText(config.LogPath(dataDir)),
 		xmlText(filepath.Join(dataDir, "agent.err.log")))
 }
 

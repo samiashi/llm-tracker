@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/samiashi/llm-tracker/agent/internal/config"
 	"github.com/samiashi/llm-tracker/agent/internal/launchd"
 )
 
@@ -25,7 +26,7 @@ func cmdInstall(dataDir string) error {
 	}
 	fmt.Println("installed and started:", p)
 	fmt.Println("binary:", bin)
-	fmt.Println("logs:", filepath.Join(dataDir, "agent.log"))
+	fmt.Println("logs:", config.LogPath(dataDir))
 	return nil
 }
 

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/samiashi/llm-tracker/agent/internal/config"
 	"github.com/samiashi/llm-tracker/agent/internal/identity"
 	"github.com/samiashi/llm-tracker/agent/internal/launchd"
+	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/agent/internal/tracker"
 )
 
@@ -28,7 +28,7 @@ func cmdStatus(dataDir string) error {
 	}
 	fmt.Println("version: ", version)
 	fmt.Println("machine: ", id)
-	fmt.Println("state:   ", filepath.Join(dataDir, "agent.db"))
+	fmt.Println("state:   ", store.Path(dataDir))
 	if cfg.ServerURL == "" {
 		fmt.Println("server:   (not enrolled -- collecting locally only)")
 	} else {
@@ -100,7 +100,7 @@ func cmdStatus(dataDir string) error {
 // alone can be the larger half of what the directory costs.
 func archiveBytes(dataDir string) int64 {
 	var total int64
-	base := filepath.Join(dataDir, "agent.db")
+	base := store.Path(dataDir)
 	for _, p := range []string{base, base + "-wal", base + "-shm"} {
 		if fi, err := os.Stat(p); err == nil {
 			total += fi.Size()

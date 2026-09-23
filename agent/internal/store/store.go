@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -83,6 +84,9 @@ CREATE TABLE IF NOT EXISTS meta (
   v TEXT NOT NULL
 );
 `
+
+// Path is the archive's file in a data directory.
+func Path(dataDir string) string { return filepath.Join(dataDir, "agent.db") }
 
 func Open(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)")
