@@ -1,0 +1,246 @@
+package api
+
+import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"reflect"
+	"strings"
+	"time"
+
+	"github.com/samiashi/llm-tracker/schema"
+)
+
+const (
+	// maxIngestBytes bounds a batch's JSON on the wire and again after
+	// decompression; a first-run backfill batch fits well inside it.
+	maxIngestBytes = 64 << 20
+	// maxBatchItems bounds each list in a batch. The agent sends 2,000
+	// events; the byte limit alone admits millions of minimal elements,
+	// each far larger decoded than on the wire.
+	maxBatchItems = 50_000
+	// maxFieldLen is far above any real string on the wire, so clipping
+	// only ever touches corrupt input.
+	maxFieldLen = 512
+	// maxTokens is about a thousand times the largest response any model
+	// produces, and keeps the sums built on counts far from int64 overflow.
+	maxTokens = 1 << 40
+	// maxNativeCostUSD bounds a self-reported cost, which goes straight into
+	// billed spend.
+	maxNativeCostUSD = 1_000_000.0
+)
+
+// authorised checks the caller's ingest token, one enrolment issued. Ingest is
+// the one write path, and an open one lets anyone poison the numbers.
+func (s *Server) authorised(r *http.Request) (bool, error) {
+	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || !strings.HasPrefix(got, schema.EnrolledTokenPrefix) {
+		return false, nil
+	}
+	_, live, err := s.DB.TokenLogin(r.Context(), got)
+	return live, err
+}
+
+func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	ok, err := s.authorised(r)
+	if err != nil {
+		// Not a 401, which an agent takes as its token refused -- something
+		// retrying never fixes -- for what is a fault on this side.
+		s.writeInternal(w, "ingest auth", err)
+		return
+	}
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, errors.New("invalid token"))
+		return
+	}
+	// A POST with no Content-Type, or a CORS-simple one, needs no preflight,
+	// so any page a developer visits could write into a loopback server.
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		writeErr(w, http.StatusUnsupportedMediaType,
+			errors.New("ingest requires Content-Type: application/json"))
+		return
+	}
+
+	// The byte limit applies after decompression too: a batch gzips about
+	// 17x, and padding far more.
+	r.Body = http.MaxBytesReader(w, r.Body, maxIngestBytes)
+	src := io.Reader(r.Body)
+	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
+		zr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, errors.New("malformed gzip body"))
+			return
+		}
+		defer zr.Close()
+		src = http.MaxBytesReader(w, zr, maxIngestBytes)
+	}
+
+	var in ingestBody
+	if err := json.NewDecoder(src).Decode(&in); err != nil {
+		// 413 tells the agent to send less; a 400 would say its JSON is corrupt.
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) || errors.Is(err, errTooManyItems) {
+			writeErr(w, http.StatusRequestEntityTooLarge, fmt.Errorf(
+				"batch is larger than the limit of %d bytes or %d items in one list",
+				maxIngestBytes, maxBatchItems))
+			return
+		}
+		writeErr(w, http.StatusBadRequest, errors.New("malformed request body"))
+		return
+	}
+	if in.V > schema.Version {
+		// Accepted: refusing would break whoever upgraded first, and unknown
+		// fields are ignored.
+		s.Log.Warn("agent newer than server", "agent_v", in.V, "server_v", schema.Version)
+	}
+
+	batch, rejected := in.batch()
+	res, err := s.DB.Ingest(r.Context(), &batch)
+	if err != nil {
+		s.writeInternal(w, "ingest", err)
+		return
+	}
+	if rejected > 0 {
+		s.Log.Warn("rejected implausible events", "n", rejected, "machine_id", batch.MachineID)
+	}
+	// The agent takes received + rejected as the count it sent, and any other
+	// reply as no acknowledgement of its batch.
+	res.EventsReceived = len(batch.Events)
+	res.EventsRejected = rejected
+	res.ServerVersion = s.Version
+	writeJSON(w, http.StatusOK, res)
+}
+
+// ingestBody is a Batch as it arrives. Each list shadows the embedded one
+// with a bounded type (encoding/json prefers the shallower field), and
+// handleIngest stores only what batch() builds from them. A list added to
+// schema.Batch must be shadowed here too; TestEveryListInABatchIsBounded
+// fails until it is.
+type ingestBody struct {
+	schema.Batch
+	Events        bounded[schema.Event]         `json:"events"`
+	Quota         bounded[schema.QuotaSample]   `json:"quota"`
+	UnknownSource bounded[schema.UnknownSource] `json:"unknown_sources"`
+	Accounts      bounded[schema.Account]       `json:"accounts"`
+}
+
+// batch returns what is worth storing -- the plausible events, with every
+// string clipped -- and how many events were dropped.
+func (in *ingestBody) batch() (schema.Batch, int) {
+	b := in.Batch
+	var rejected int
+	b.Events, rejected = sanitise(in.Events)
+	b.Quota = in.Quota
+	b.UnknownSource = in.UnknownSource
+	b.Accounts = in.Accounts
+	clipStrings(reflect.ValueOf(&b).Elem())
+	return b, rejected
+}
+
+// sanitise drops events that cannot be true. The token is shared by the
+// fleet, so the realistic source is a colleague's adapter misreading a
+// format, and one bad row makes every total above it wrong, untraceably.
+func sanitise(events []schema.Event) (kept []schema.Event, rejected int) {
+	kept = make([]schema.Event, 0, len(events))
+	// A far-future timestamp sits above every window, and "last seen"
+	// arithmetic reads its negative age as healthy.
+	floor := time.Now().AddDate(-10, 0, 0)
+	ceil := time.Now().AddDate(0, 0, 2)
+	for _, e := range events {
+		switch {
+		case !plausible(e.Usage),
+			!e.TS.IsZero() && (e.TS.Before(floor) || e.TS.After(ceil)),
+			e.NativeCostUSD != nil && (*e.NativeCostUSD < 0 || *e.NativeCostUSD > maxNativeCostUSD):
+			rejected++
+		default:
+			kept = append(kept, e)
+		}
+	}
+	return kept, rejected
+}
+
+// plausible bounds every counter before any is summed: out-of-range counts
+// can wrap int64 into a total under the limit, and SQLite's SUM fails
+// outright on overflow, taking every windowed endpoint with it.
+func plausible(u schema.Usage) bool {
+	for _, n := range [...]int64{u.InputTokens, u.OutputTokens, u.CacheReadTokens,
+		u.CacheWrite5mTokens, u.CacheWrite1hTokens, u.ReasoningTokens,
+		u.WebSearchCalls, u.WebFetchCalls} {
+		if n < 0 || n > maxTokens {
+			return false
+		}
+	}
+	return u.TotalTokens() <= maxTokens
+}
+
+// clipStrings clips every exported string reachable from v. It walks the
+// types rather than naming fields, so a string added to the wire later is
+// bounded too: an unclipped one is stored whole and served on every poll.
+func clipStrings(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString(clip(v.String(), maxFieldLen))
+	case reflect.Struct:
+		for i := range v.NumField() {
+			if v.Type().Field(i).IsExported() {
+				clipStrings(v.Field(i))
+			}
+		}
+	case reflect.Slice:
+		for i := range v.Len() {
+			clipStrings(v.Index(i))
+		}
+	case reflect.Pointer:
+		if !v.IsNil() {
+			clipStrings(v.Elem())
+		}
+	}
+}
+
+// clip bounds a string by runes, so a multi-byte character is never cut in
+// half and stored as invalid UTF-8.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
+var errTooManyItems = errors.New("a list in the batch is longer than the limit")
+
+// bounded is a JSON array that stops decoding at maxBatchItems, instead of
+// materialising the whole slice to be measured afterwards.
+type bounded[T any] []T
+
+func (b *bounded[T]) UnmarshalJSON(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if tok == nil {
+		return nil // null
+	}
+	if d, ok := tok.(json.Delim); !ok || d != '[' {
+		return errors.New("expected an array")
+	}
+	for dec.More() {
+		if len(*b) >= maxBatchItems {
+			return errTooManyItems
+		}
+		var v T
+		if err := dec.Decode(&v); err != nil {
+			return err
+		}
+		*b = append(*b, v)
+	}
+	return nil
+}
