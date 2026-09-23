@@ -334,7 +334,7 @@ provision but a disk.
   consistent without stopping the server.
 
 `deploy/gcp/deploy.sh` sets up and upgrades the deployment on one Compute
-Engine VM; the README's On Google Cloud section says what it creates. Its
+Engine VM; the README's Running the tracker section says what it creates. Its
 `startup.sh` runs on every boot, and must never let a container start before
 the data disk is mounted: `/mnt/disks` is tmpfs there, and a server started on
 the empty directory would take uploads into memory and lose them, while the
@@ -349,8 +349,8 @@ token, no overrides.
 
 Retention is off by default. Pruning rolls each day up before deleting its
 events, and a rolled-up day never returns to per-event detail: turning pruning
-off only lets agents deliver what it refused. The README's Retention section
-has the rules.
+off only lets agents deliver what it refused. `-retain N` turns it on, keeping
+N days of raw events.
 
 ## Style
 
