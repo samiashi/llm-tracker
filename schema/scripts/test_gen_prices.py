@@ -1,5 +1,6 @@
 """Tests for gen_prices.py: python3 -m unittest discover -s schema/scripts"""
 import copy
+import json
 import os
 import tempfile
 import unittest
@@ -45,8 +46,8 @@ UPSTREAM = {
 
 class GenPricesTest(unittest.TestCase):
     def setUp(self):
-        # check() compares against schema/prices.json under the working
-        # directory; an empty one keeps the real table out of these tests.
+        # check() compares against the table at gen.PRICES, relative to the
+        # working directory; an empty one keeps the committed table out.
         self.cwd = os.getcwd()
         self.tmp = tempfile.TemporaryDirectory()
         os.chdir(self.tmp.name)
@@ -69,6 +70,29 @@ class GenPricesTest(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "cache_read_input_token_cost"):
             self.check(raw)
 
+    def test_a_moved_rate_is_refused(self):
+        # A cent per million tokens is a move, not rounding.
+        raw = copy.deepcopy(UPSTREAM)
+        raw["claude-opus-5"]["input_cost_per_token"] = 5.01 * M
+        with self.assertRaisesRegex(SystemExit, r"\|claude-opus-5\.input is 5\.01"):
+            self.check(raw)
+
+    def test_a_table_that_lost_most_of_its_keys_is_not_written(self):
+        # Ten endpoint keys: models do get withdrawn, so two fewer than last
+        # time is written, and ninety fewer is a change in upstream's shape.
+        raw = {**UPSTREAM, **{f"openai/gpt-x{i}": spec("openai", 1, 2) for i in range(10)}}
+        # No exist_ok: run from the repository root, this fails rather than
+        # overwrite the committed table.
+        os.makedirs(os.path.dirname(gen.PRICES))
+        for previous, refused in ((12, False), (100, True)):
+            with open(gen.PRICES, "w") as f:
+                json.dump({"rates": {f"openai|m{i}": {} for i in range(previous)}}, f)
+            if refused:
+                with self.assertRaisesRegex(SystemExit, "down from 100"):
+                    self.check(raw)
+            else:
+                self.check(raw)
+
     def test_a_renamed_tier_field_is_refused(self):
         raw = copy.deepcopy(UPSTREAM)
         sol = raw["gpt-5.6-sol"]
@@ -81,6 +105,19 @@ class GenPricesTest(unittest.TestCase):
         self.assertEqual((r["cache_write_5m"], r["cache_write_1h"]), (3.75, 6.0))
         r = gen.rate("anthropic.claude-y", spec("bedrock", 3, 15, 0.3, 3.75))
         self.assertEqual(r["cache_write_1h"], 6.0)
+
+    def test_a_missing_cache_price_is_never_free(self):
+        # Outside Anthropic, cached tokens bill as input and a 1h write as a 5m one.
+        r = gen.rate("mistral/x", spec("mistral", 2, 6))
+        self.assertEqual((r["cache_read"], r["cache_write_5m"], r["cache_write_1h"]), (2.0, 2.0, 2.0))
+        r = gen.rate("mistral/y", spec("mistral", 2, 6, cw5=2.5))
+        self.assertEqual(r["cache_write_1h"], 2.5)
+
+    def test_an_entry_priced_at_zero_is_left_unpriced(self):
+        # Left unpriced: a silent $0 would hide a gap upstream.
+        rates = gen.build({**UPSTREAM, "openrouter/some-model": spec("openrouter", 0, 0)})
+        self.assertNotIn("openrouter|some-model", rates)
+        self.assertNotIn("|some-model", rates)
 
     def test_a_tier_fills_what_upstream_omits_and_skips_other_service_tiers(self):
         tiers = gen.build(UPSTREAM)["|gpt-5.6-sol"]["tiers"]
