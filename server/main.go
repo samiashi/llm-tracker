@@ -103,18 +103,16 @@ func run() int {
 	// writing into a database the process is about to close.
 	bgCtx, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
-	// Beside live ingest rather than before serving: every write reprice makes
-	// is conditional, and ingest prices what it stores meanwhile.
-	go repriceIfChanged(bgCtx, database, log)
 	// The floor ingest enforces follows the same switch: a server that keeps
 	// everything accepts everything, including the backlog its agents have
 	// been holding since it last pruned.
 	database.Pruning = *retainDays > 0
-	if *retainDays > 0 {
-		go pruneDaily(bgCtx, database, *retainDays, log)
-	} else if day, err := database.RollupsBefore(context.Background()); err == nil && day != "" {
-		log.Info("retention is off: agents may now deliver what pruning refused, "+
-			"but days already rolled up stay rolled up", "rolled_up_before", day)
+	go maintain(bgCtx, database, *retainDays, log)
+	if *retainDays == 0 {
+		if day, err := database.RollupsBefore(context.Background()); err == nil && day != "" {
+			log.Info("retention is off: agents may now deliver what pruning refused, "+
+				"but days already rolled up stay rolled up", "rolled_up_before", day)
+		}
 	}
 
 	httpSrv := &http.Server{
@@ -227,6 +225,18 @@ func probe(addr string) int {
 		return 1
 	}
 	return 0
+}
+
+// maintain reprices stored events for this build, then, when retain is set,
+// prunes daily. Reprice runs beside live ingest rather than before serving:
+// every write it makes is conditional, and ingest prices what it stores
+// meanwhile. The prune waits for it, because a rollup freezes the costs it
+// sums, and started beside it would freeze the last build's.
+func maintain(ctx context.Context, d *db.DB, retain int, log *slog.Logger) {
+	repriceIfChanged(ctx, d, log)
+	if retain > 0 {
+		pruneDaily(ctx, d, retain, log)
+	}
 }
 
 // repriceIfChanged brings stored costs up to this build's prices, once per

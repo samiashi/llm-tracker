@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,7 +13,9 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/samiashi/llm-tracker/schema"
 	"github.com/samiashi/llm-tracker/server/internal/api"
 	"github.com/samiashi/llm-tracker/server/internal/auth"
 	"github.com/samiashi/llm-tracker/server/internal/db"
@@ -151,5 +155,58 @@ func TestTheServerNamesEveryMissingAuthSetting(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "GITHUB_ORG") {
 		t.Errorf("%v names the org, which is set", err)
+	}
+}
+
+// A rollup freezes the costs it sums, so the startup prune must see this
+// build's prices: started beside the reprice, it rolled up the last build's.
+func TestTheStartupPruneRollsUpThisBuildsPrices(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "t.db")
+	d, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	events := make([]schema.Event, 3_000)
+	for i := range events {
+		events[i] = schema.Event{V: schema.Version, ID: fmt.Sprint("e", i), Source: schema.SourceClaudeCode,
+			TS: time.Now().AddDate(0, 0, -200), Model: "claude-opus-5", CostBasis: schema.CostBilled,
+			Usage: schema.Usage{InputTokens: 1_000_000}}
+	}
+	if _, err := d.Ingest(ctx, "tester", &schema.Batch{V: schema.Version, MachineID: "m", Events: events}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	sum := func(table string) (usd float64) {
+		t.Helper()
+		if err := raw.QueryRow(`SELECT COALESCE(SUM(cost_usd), 0) FROM ` + table).Scan(&usd); err != nil {
+			t.Fatal(err)
+		}
+		return usd
+	}
+	want := sum("event")
+	// As a build with other prices left them.
+	if _, err := raw.Exec(`UPDATE event SET cost_usd = cost_usd * 2`); err != nil {
+		t.Fatal(err)
+	}
+
+	bg, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { maintain(bg, d, 100, slog.New(slog.DiscardHandler)); close(done) }()
+	for deadline := time.Now().Add(10 * time.Second); sum("daily_rollup") == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("no prune ran")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	stop()
+	<-done
+	if got := sum("daily_rollup"); got != want {
+		t.Fatalf("rolled up at $%.2f, want this build's $%.2f", got, want)
 	}
 }
