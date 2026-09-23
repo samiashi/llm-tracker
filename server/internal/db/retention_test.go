@@ -141,7 +141,10 @@ func TestPruneForgetsMachinesThatStoppedReporting(t *testing.T) {
 	} {
 		if _, err := d.write.ExecContext(ctx, `
 			INSERT INTO machine (id, hostname, agent_version, first_seen, last_seen)
-			VALUES (?, ?, '', ?, ?)`, m.id, m.id, old, m.lastSeen); err != nil {
+			VALUES (?, ?, '', ?, ?);
+			INSERT INTO unknown_source (machine_id, path, hint, first_seen, last_seen)
+			VALUES (?, '/Users/dev/.amp', 'Amp', ?, ?)`,
+			m.id, m.id, old, m.lastSeen, m.id, old, m.lastSeen); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -163,6 +166,16 @@ func TestPruneForgetsMachinesThatStoppedReporting(t *testing.T) {
 	}
 	if !ids["quiet-but-alive"] {
 		t.Error("a machine still checking in was dropped; quiet is not the same as gone")
+	}
+
+	// Only a complete report from the machine replaces its unknown sources,
+	// and a forgotten machine sends none.
+	unknown, err := d.UnknownSources(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unknown) != 1 || unknown[0].MachineID != "quiet-but-alive" {
+		t.Errorf("unknown sources %+v, want only the live machine's", unknown)
 	}
 }
 

@@ -90,6 +90,13 @@ func (d *DB) Prune(ctx context.Context, before string) (*PruneResult, error) {
 		return nil, err
 	}
 	res.MachinesPruned, _ = m.RowsAffected()
+	// Their unknown sources go with them: only a complete report from the
+	// machine replaces those, and a forgotten machine sends none.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM unknown_source
+		 WHERE NOT EXISTS (SELECT 1 FROM machine WHERE id = unknown_source.machine_id)`); err != nil {
+		return nil, err
+	}
 
 	// Nothing rolled up means the floor does not move. A floor on an empty
 	// database would make a new server refuse the backfill it is about to be
