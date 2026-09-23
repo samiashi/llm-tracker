@@ -102,13 +102,27 @@ export function SessionsTable({
   );
 }
 
-export function HealthTable({ sources, now }: { sources: SourceHealth[]; now: number }) {
+/** A machine as a person knows it: its hostname, or the start of its id when there is none. */
+const machineName = (id: string, hostname = "") => hostname || id.slice(0, 12);
+
+export function HealthTable({
+  sources,
+  now,
+  agents,
+}: {
+  sources: SourceHealth[];
+  now: number;
+  /** Where the hostnames come from: the server reports each tool once per machine. */
+  agents: AgentRow[];
+}) {
   if (sources.length === 0) return <p className="empty">No collector has reported yet.</p>;
+  const hostnames = new Map(agents.map((a) => [a.machine_id, a.hostname]));
   return (
     <table>
       <thead>
         <tr>
           <th>Source</th>
+          <th>Machine</th>
           <th className="num">Events</th>
           <th className="num">Last seen</th>
         </tr>
@@ -117,6 +131,7 @@ export function HealthTable({ sources, now }: { sources: SourceHealth[]; now: nu
         {sources.map((h) => (
           <tr key={h.source + h.machine_id}>
             <td>{h.source}</td>
+            <td>{machineName(h.machine_id, hostnames.get(h.machine_id))}</td>
             <td className="num">{exact(h.events)}</td>
             <td className="num">{ago(h.last_event, now)}</td>
           </tr>
@@ -169,7 +184,7 @@ export function AgentsTable({
                   />{" "}
                   {a.person || "unattributed"}
                 </td>
-                <td>{a.hostname || a.machine_id.slice(0, 12)}</td>
+                <td>{machineName(a.machine_id, a.hostname)}</td>
                 <td>
                   {a.agent_version || "—"}
                   {state !== "ok" && (

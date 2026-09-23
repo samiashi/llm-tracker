@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
-import type { AgentRow, SessionRow } from "@/api";
-import { AgentsTable, SessionsTable } from "@/components/tables";
+import type { AgentRow, SessionRow, SourceHealth } from "@/api";
+import { AgentsTable, HealthTable, SessionsTable } from "@/components/tables";
 
 afterEach(cleanup);
 
@@ -84,5 +84,38 @@ describe("SessionsTable", () => {
     );
     expect(costs(0)).toEqual(["$3.00", "$0"]);
     expect(costs(1)).toEqual(["unpriced", "unpriced"]);
+  });
+});
+
+describe("HealthTable", () => {
+  const source = (machine: string): SourceHealth => ({
+    source: "claude_code",
+    machine_id: machine,
+    last_event: 1,
+    events: 5,
+  });
+  const machines = () =>
+    [...document.querySelectorAll("tbody tr")].map((r) => r.querySelectorAll("td")[1].textContent);
+
+  // The server reports each tool once per machine: without the machine, two
+  // Macs running Claude Code are two identical rows, and a stalled one hides.
+  it("names the machine each row comes from", () => {
+    render(
+      <HealthTable
+        now={2}
+        sources={[source("m1"), source("m2")]}
+        agents={[
+          { ...agent("m1", "v1.4.0", "1.4.0"), hostname: "alice-mbp" },
+          { ...agent("m2", "v1.4.0", "1.4.0"), hostname: "bob-mbp" },
+        ]}
+      />,
+    );
+    expect(machines()).toEqual(["alice-mbp", "bob-mbp"]);
+  });
+
+  // As the Agents table does, for a machine the agents list cannot name.
+  it("shows a machine id where there is no hostname for it", () => {
+    render(<HealthTable now={2} sources={[source("0123456789abcdef")]} agents={[]} />);
+    expect(machines()).toEqual(["0123456789ab"]);
   });
 });

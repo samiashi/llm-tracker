@@ -522,7 +522,7 @@ function Dashboard({
           failed={down.has("health")}
           note="When each tool last produced usage. If a tool you still use stops updating, its log format may have changed."
         >
-          <HealthTable sources={data.health} now={data.agentsNow} />
+          <HealthTable sources={data.health} now={data.agentsNow} agents={data.agents} />
         </Card>
       </div>
 
