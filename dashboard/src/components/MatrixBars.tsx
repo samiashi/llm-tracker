@@ -2,6 +2,7 @@ import { Fragment, useMemo } from "react";
 import type { MatrixCell } from "@/api";
 import { tokens, usd } from "@/format";
 import { More } from "@/components/Card";
+import { Unpriced } from "@/components/Unpriced";
 import { Legend } from "@/components/chart";
 import { OTHER_FILL, SLOTS } from "@/palette";
 
@@ -17,7 +18,13 @@ type Segment = {
   billed: number;
   rateCard: number;
   unknownBasis: number;
+  /** Tokens with no price, which none of the three figures include. */
+  unpriced: number;
 };
+
+/** Usage with no price at all, where "$0" would pass it off as free. */
+const unpricedOnly = (s: Segment) =>
+  s.unpriced > 0 && s.billed === 0 && s.rateCard === 0 && s.unknownBasis === 0;
 
 const share = (part: number, whole: number) => {
   const pct = whole > 0 ? (part / whole) * 100 : 0;
@@ -80,11 +87,19 @@ export function MatrixBars({
     for (const c of cells) {
       const key = overflow.has(norm(c.col)) ? OTHER : norm(c.col);
       const segments = byRow.get(c.row) ?? new Map<string, Segment>();
-      const s = segments.get(key) ?? { key, tokens: 0, billed: 0, rateCard: 0, unknownBasis: 0 };
+      const s = segments.get(key) ?? {
+        key,
+        tokens: 0,
+        billed: 0,
+        rateCard: 0,
+        unknownBasis: 0,
+        unpriced: 0,
+      };
       s.tokens += c.tokens;
       s.billed += c.billed_usd;
       s.rateCard += c.rate_card_usd;
       s.unknownBasis += c.unknown_basis_usd;
+      s.unpriced += c.unpriced_tokens;
       segments.set(key, s);
       byRow.set(c.row, segments);
     }
@@ -96,7 +111,7 @@ export function MatrixBars({
       // Billed only: added to the rate-card equivalent it would be neither
       // spend nor list price.
       const billed = segments.reduce((sum, s) => sum + s.billed, 0);
-      return { row, total, billed, segments };
+      return { row, total, billed, unpriced: segments.every(unpricedOnly), segments };
     });
 
     return {
@@ -115,8 +130,11 @@ export function MatrixBars({
   const name = (key: string) => model.names.get(key) ?? key;
   const describe = (row: string, s: Segment, total: number) =>
     `${row} · ${name(s.key)} — ${tokens(s.tokens)} tokens (${share(s.tokens, total)}) · ` +
-    `${usd(s.billed)} billed, ${usd(s.rateCard)} rate card` +
-    (s.unknownBasis > 0 ? `, ${usd(s.unknownBasis)} basis unknown (list prices)` : "");
+    (unpricedOnly(s)
+      ? "unpriced: no entry in the price table"
+      : `${usd(s.billed)} billed, ${usd(s.rateCard)} rate card` +
+        (s.unknownBasis > 0 ? `, ${usd(s.unknownBasis)} basis unknown (list prices)` : "") +
+        (s.unpriced > 0 ? `, ${tokens(s.unpriced)} tokens unpriced` : ""));
 
   return (
     <>
@@ -130,7 +148,9 @@ export function MatrixBars({
               </span>
               <span className="val">
                 {tokens(r.total)}
-                <span className="cost">{usd(r.billed)} billed</span>
+                <span className="cost">
+                  {r.unpriced ? <Unpriced /> : `${usd(r.billed)} billed`}
+                </span>
               </span>
             </div>
             {/* Relative to the widest row, so bars compare across models too.

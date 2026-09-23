@@ -1,5 +1,6 @@
 import type { AgentRow, SessionRow, SourceHealth, UnknownRow } from "@/api";
 import { More } from "@/components/Card";
+import { Unpriced } from "@/components/Unpriced";
 import { agentHealth, fleetVersion, versionState } from "@/fleet";
 import type { Version } from "@/fleet";
 import { ago, bytes, exact, tokens, usd } from "@/format";
@@ -53,20 +54,42 @@ export function SessionsTable({
           </tr>
         </thead>
         <tbody>
-          {shown.map((s) => (
-            <tr key={s.session_id + s.source}>
-              <td>{s.source}</td>
-              <td>{s.model || "—"}</td>
-              <td>{s.effort ? <span className="tag todo">{s.effort}</span> : "—"}</td>
-              <td>{s.email || "—"}</td>
-              <td className="num">{tokens(s.tokens)}</td>
-              <td className="num">{usd(s.billed_usd)}</td>
-              <td className="num">{usd(s.rate_card_usd)}</td>
-              {unknownBasis && <td className="num">{usd(s.unknown_basis_usd)}</td>}
-              <td className="num">{exact(s.events)}</td>
-              <td className="num">{ago(s.last_seen, now)}</td>
-            </tr>
-          ))}
+          {shown.map((s) => {
+            // With no price at all, a $0 would pass the session off as free.
+            const unpriced =
+              s.unpriced_tokens > 0 &&
+              s.billed_usd === 0 &&
+              s.rate_card_usd === 0 &&
+              s.unknown_basis_usd === 0;
+            const cost = (v: number) => (unpriced ? <Unpriced /> : usd(v));
+            // Partly priced: the figures are right for what they cover, and say what they leave out.
+            const partly =
+              !unpriced && s.unpriced_tokens > 0
+                ? `Leaves out ${tokens(s.unpriced_tokens)} unpriced tokens`
+                : undefined;
+            return (
+              <tr key={s.session_id + s.source}>
+                <td>{s.source}</td>
+                <td>{s.model || "—"}</td>
+                <td>{s.effort ? <span className="tag todo">{s.effort}</span> : "—"}</td>
+                <td>{s.email || "—"}</td>
+                <td className="num">{tokens(s.tokens)}</td>
+                <td className="num" title={partly}>
+                  {cost(s.billed_usd)}
+                </td>
+                <td className="num" title={partly}>
+                  {cost(s.rate_card_usd)}
+                </td>
+                {unknownBasis && (
+                  <td className="num" title={partly}>
+                    {cost(s.unknown_basis_usd)}
+                  </td>
+                )}
+                <td className="num">{exact(s.events)}</td>
+                <td className="num">{ago(s.last_seen, now)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {/* Of the top N only: the server returns no more than that. */}

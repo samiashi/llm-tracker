@@ -32,6 +32,8 @@ const session = {
   tokens: 500,
   billed_usd: 1,
   rate_card_usd: 2,
+  unknown_basis_usd: 0,
+  unpriced_tokens: 0,
   events: 5,
   last_seen: 1,
 };
@@ -86,6 +88,7 @@ function mockFetch(over: Record<string, Reply> = {}) {
             billed_usd: 1,
             rate_card_usd: 2,
             unknown_basis_usd: 0,
+            unpriced_tokens: 0,
           },
         ],
         col_order: ["low", "medium", "high"],
@@ -339,6 +342,63 @@ describe("spend", () => {
     render(<App />);
     await loaded();
     expect(screen.queryByText(/basis unknown/i)).toBeNull();
+  });
+});
+
+describe("unpriced usage is never shown as free", () => {
+  const withTotals = (t: Totals) =>
+    mockFetch({
+      "/v1/summary": () =>
+        ok({
+          totals: t,
+          history_first_day: "2026-09-01",
+          history_last_day: "2026-09-22",
+          server_release: "",
+        }),
+    });
+
+  // 90M tokens is a lot of usage to leave uncosted without a word, even at
+  // under one percent of the whole.
+  it("says so when any tokens are unpriced, however small their share", async () => {
+    const t = { ...totals, total_tokens: 10e9, unpriced_tokens: 90e6 };
+    vi.stubGlobal("fetch", withTotals(t));
+    render(<App />);
+    await loaded();
+    const notice = document.querySelector(".banner");
+    expect(notice?.textContent).toContain("90M tokens are unpriced");
+    expect(notice?.textContent).toContain("0.9%");
+  });
+
+  it("gives a large unpriced share the full explanation", async () => {
+    const t = { ...totals, total_tokens: 1000, unpriced_tokens: 250 };
+    vi.stubGlobal("fetch", withTotals(t));
+    render(<App />);
+    await loaded();
+    expect(document.querySelector(".banner")?.textContent).toContain(
+      "25.0% of tokens are unpriced.",
+    );
+  });
+
+  it("says nothing when every token is priced", async () => {
+    vi.stubGlobal("fetch", mockFetch());
+    render(<App />);
+    await loaded();
+    expect(screen.queryByText(/unpriced/)).toBeNull();
+  });
+
+  it("marks a model with no price in By model", async () => {
+    const models = [
+      group("claude-opus-5"),
+      group("gpt-9", { ...totals, unpriced_tokens: totals.total_tokens }),
+      group("mixed", { ...totals, unpriced_tokens: 10 }),
+    ];
+    vi.stubGlobal("fetch", mockFetch({ "by=model": () => ok({ groups: models }) }));
+    render(<App />);
+    await loaded();
+    const marks = [...card("By model").querySelectorAll(".barrow")].map(
+      (r) => r.querySelector(".tag")?.textContent ?? "",
+    );
+    expect(marks).toEqual(["", "unpriced", "partly unpriced"]);
   });
 });
 

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Group } from "@/api";
 import { More } from "@/components/Card";
 
@@ -17,6 +18,7 @@ export function BarList({
   selected,
   summable = true,
   onMore,
+  mark,
 }: {
   groups: Group[];
   color: string;
@@ -31,6 +33,8 @@ export function BarList({
   summable?: boolean;
   /** Shows the hidden rows, making the "+N more" line a button. */
   onMore?: () => void;
+  /** Something to say beside a row's name, such as that it has no price. */
+  mark?: (g: Group) => ReactNode;
 }) {
   const all = groups.filter((g) => {
     const v = value(g);
@@ -74,6 +78,7 @@ export function BarList({
               <span className="name" title={g.key}>
                 {g.key}
               </span>
+              {mark?.(g)}
               <span className="val">{v === null ? "—" : format(v)}</span>
             </div>
             <div className="bartrack">

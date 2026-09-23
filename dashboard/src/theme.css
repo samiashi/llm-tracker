@@ -295,6 +295,11 @@ html:has(dialog.expanded[open]) {
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
+/* Beside the name, not between it and the value. */
+.barrow .head .tag {
+  flex-shrink: 0;
+  margin-right: auto;
+}
 .bartrack {
   height: 8px;
   background: var(--grid);
@@ -432,6 +437,10 @@ tr:last-child td {
 .banner b {
   color: var(--text-primary);
   font-weight: 600;
+}
+/* A small unpriced share: said, in one line, without the full explanation. */
+.banner.compact {
+  padding: 7px 14px;
 }
 
 @media (max-width: 640px) {
@@ -876,6 +885,10 @@ tr:last-child td {
   color: var(--series-1);
   border-color: color-mix(in srgb, var(--series-1) 40%, transparent);
   background: color-mix(in srgb, var(--series-1) 10%, transparent);
+}
+/* The unpriced banner's colour, where a figure would otherwise read $0. */
+.tag.unpriced {
+  border-color: var(--warning);
 }
 .rownote {
   font-size: 11px;

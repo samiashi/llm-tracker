@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { api, describeFailure } from "@/api";
-import type { Filter } from "@/api";
+import type { Filter, Group } from "@/api";
 import { change, loadDashboard, ratePerMillion } from "@/dashboard";
 import type { Data, RequestName } from "@/dashboard";
 import { exact, since, tokens, usd, utcMidnightAt, utcOffset } from "@/format";
@@ -13,11 +13,19 @@ import { Heatmap } from "@/components/Heatmap";
 import { MatrixBars } from "@/components/MatrixBars";
 import { Composition } from "@/components/Composition";
 import { Skeleton } from "@/components/Skeleton";
+import { Unpriced } from "@/components/Unpriced";
 import { AgentsTable, HealthTable, SessionsTable, UnknownTable } from "@/components/tables";
 import { SLOTS, TOKEN_KIND } from "@/palette";
 import { STALE_MS, useLiveData } from "@/useLiveData";
 import { intentFromURL, isoAt, MAX_DAYS, resolve, writeIntentToURL } from "@/window";
 import type { Intent } from "@/window";
+
+/** A model's unpriced tokens, marked where its tokens are listed: a bar is no place for a silent $0. */
+function unpricedMark(g: Group) {
+  const { unpriced_tokens: unpriced, total_tokens: total } = g.totals;
+  if (unpriced === 0) return null;
+  return <Unpriced label={unpriced < total ? "partly unpriced" : "unpriced"} />;
+}
 
 const PRESETS = [
   { label: "7d", days: 7 },
@@ -254,13 +262,21 @@ function Dashboard({
 
   return (
     <>
-      {unpricedShare > 1 && (
-        <div className="banner">
-          <b>{unpricedShare.toFixed(1)}% of tokens are unpriced.</b> {tokens(t.unpriced_tokens)}{" "}
-          tokens use a model with no entry in the price table. They are counted but deliberately not
-          costed — an unrecognised model shows here rather than quietly reading as free.
-        </div>
-      )}
+      {/* Whenever there is any: a small share of a large total is still a lot of usage. */}
+      {t.unpriced_tokens > 0 &&
+        (unpricedShare >= 1 ? (
+          <div className="banner">
+            <b>{unpricedShare.toFixed(1)}% of tokens are unpriced.</b> {tokens(t.unpriced_tokens)}{" "}
+            tokens use a model with no entry in the price table. They are counted but deliberately
+            not costed — an unrecognised model shows here rather than quietly reading as free.
+          </div>
+        ) : (
+          <div className="banner compact">
+            <b>{tokens(t.unpriced_tokens)} tokens are unpriced</b> (
+            {unpricedShare < 0.1 ? "<0.1" : unpricedShare.toFixed(1)}% of the total): a model with
+            no entry in the price table, counted but not costed.
+          </div>
+        ))}
 
       <div className="grid tiles" style={{ marginBottom: 14 }}>
         <Tile
@@ -381,6 +397,7 @@ function Dashboard({
               format={tokens}
               max={v.expanded ? Infinity : undefined}
               onMore={v.open}
+              mark={unpricedMark}
             />
           )}
         </Card>

@@ -69,6 +69,8 @@ export type SessionRow = {
   billed_usd: number;
   rate_card_usd: number;
   unknown_basis_usd: number;
+  /** Tokens on a model with no price, which none of the three figures include. */
+  unpriced_tokens: number;
   events: number;
   last_seen: number;
 };
@@ -85,6 +87,8 @@ export type MatrixCell = {
   billed_usd: number;
   rate_card_usd: number;
   unknown_basis_usd: number;
+  /** Tokens on a model with no price, which none of the three figures include. */
+  unpriced_tokens: number;
 };
 
 /** Why a detected harness has no adapter. Widened for forward compatibility. */

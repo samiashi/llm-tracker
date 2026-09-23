@@ -14,6 +14,7 @@ const cell = (row: string, col: string, tokens: number, extra: Partial<MatrixCel
   billed_usd: 1,
   rate_card_usd: 2,
   unknown_basis_usd: 0,
+  unpriced_tokens: 0,
   ...extra,
 });
 
@@ -50,6 +51,26 @@ describe("MatrixBars", () => {
       "low 25% · high 75%",
       "medium 100%",
     ]);
+  });
+
+  // A model missing from the price table is not free (invariant 8).
+  it("says a model with no price is unpriced, not $0 billed", () => {
+    const free = { billed_usd: 0, rate_card_usd: 0 };
+    render(
+      <MatrixBars
+        colOrder={ORDER}
+        cells={[
+          cell("priced", "high", 10),
+          cell("new-model", "high", 30, { ...free, unpriced_tokens: 20 }),
+          cell("new-model", "low", 10, { ...free, unpriced_tokens: 10 }),
+        ]}
+      />,
+    );
+    const heads = [...document.querySelectorAll(".mrow .cost")].map((c) => c.textContent);
+    expect(heads).toEqual(["unpriced", "$1.00 billed"]);
+    const tip = document.querySelector(".mrow .mseg")?.getAttribute("title") ?? "";
+    expect(tip).toContain("unpriced");
+    expect(tip).not.toContain("$0");
   });
 
   it("keeps unknown-basis spend its own figure in the tooltip, and omits it when zero", () => {
