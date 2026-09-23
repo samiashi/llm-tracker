@@ -235,11 +235,14 @@ git switch main && git pull     # and CI green on this commit, darwin job includ
 git tag v1.4.0 && git push origin v1.4.0
 ```
 
-1. **`verify`** checks the tag is exactly `vX.Y.Z`, refuses a tag whose release
-   is already published (failing closed on anything but a clear 404), and runs
+1. **`verify`** checks the tag is exactly `vX.Y.Z`, refuses a tag on a commit
+   `main` has not reached, and one whose release is already published (failing
+   closed on anything but a clear 404), and runs
    `make lint-go test-go lint-dashboard test-dashboard`, the recipes `make lint`
    and `make test` run locally. It does not run CI's darwin job, so tag only a
-   commit whose CI is green.
+   commit whose CI is green. The on-main check runs from the tagged commit's
+   own workflow, so it stops a mistake; who may push a `v*` tag at all is for
+   a tag ruleset on the repository to limit.
 2. **`agent` and `image`** cross-compile from Linux: `CGO_ENABLED=0` and a
    pure-Go SQLite driver mean no macOS runner, which bills at ten times the
    rate. `agent` holds a read-only token and hands its files to `publish` as
