@@ -85,7 +85,7 @@ func cmdProbe(home, name string) error {
 	var total int64
 	var distinct int
 	var sample *schema.Event
-	if rerr := st.EachPayload(context.Background(), "event", func(raw json.RawMessage) error {
+	if rerr := st.EachPayload(context.Background(), store.Events, func(raw json.RawMessage) error {
 		var e schema.Event
 		if json.Unmarshal(raw, &e) == nil {
 			if sample == nil {

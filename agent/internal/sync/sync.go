@@ -106,11 +106,11 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 			return stats, ctx.Err()
 		}
 
-		eventIDs, eventPayloads, err := st.Unsent(ctx, "event", batchSize)
+		eventIDs, eventPayloads, err := st.Unsent(ctx, store.Events, batchSize)
 		if err != nil {
 			return stats, err
 		}
-		quotaIDs, quotaPayloads, err := st.Unsent(ctx, "quota", batchSize)
+		quotaIDs, quotaPayloads, err := st.Unsent(ctx, store.Quota, batchSize)
 		if err != nil {
 			return stats, err
 		}
@@ -144,7 +144,7 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 		// any refused quota row goes back.
 		requeued := int64(0)
 		if from, ok := ack.acceptsFrom(); ok {
-			for table, since := range map[string]time.Time{"event": from, "quota": {}} {
+			for table, since := range map[store.Table]time.Time{store.Events: from, store.Quota: {}} {
 				n, err := st.Requeue(ctx, table, since)
 				if err != nil {
 					return stats, err
@@ -166,7 +166,7 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 				// Events only: the server takes quota samples of any age, so
 				// retiring them withholds samples it would accept, invisibly
 				// to `status`.
-				n, err := st.Refused(ctx, "event", before)
+				n, err := st.Refused(ctx, store.Events, before)
 				if err != nil {
 					return stats, err
 				}
@@ -201,10 +201,10 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 			stats.Rejected += ack.EventsRejected
 		}
 
-		if err := st.MarkSent(ctx, "event", eventIDs); err != nil {
+		if err := st.MarkSent(ctx, store.Events, eventIDs); err != nil {
 			return stats, err
 		}
-		if err := st.MarkSent(ctx, "quota", quotaIDs); err != nil {
+		if err := st.MarkSent(ctx, store.Quota, quotaIDs); err != nil {
 			return stats, err
 		}
 		if !unknownSent {
