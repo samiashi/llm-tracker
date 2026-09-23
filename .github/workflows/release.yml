@@ -1,0 +1,354 @@
+name: release
+
+# One tag ships both halves: the server returns its own version on every
+# ingest, which is how an agent learns it is stale, so the two must always
+# come from the same tag.
+#
+# Nothing is visible until `publish`. The build jobs hold a read-only token and
+# hand their files over as workflow artifacts; `publish`, the only job that can
+# write a release, attaches them to a draft, checks them, tags the image and
+# only then makes the release live. `deploy` then puts it on the server.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# Two runs for one tag would race for the same draft.
+concurrency:
+  group: release-${{ github.ref }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      # sync.ReleaseVersion in the agent accepts only vX.Y.Z, so any other
+      # shape silently turns off every agent's staleness check. on.push.tags is
+      # a glob, matched before any expression can run, hence the check here.
+      - name: Tag must be exactly vX.Y.Z
+        run: |
+          [[ $GITHUB_REF_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+            { echo "::error::tag '$GITHUB_REF_NAME' must be exactly vX.Y.Z"; exit 1; }
+      # Fails fast on a published tag, and closed on anything but a clear 404.
+      # This token cannot see drafts; publish checks those.
+      - name: Refuse a published tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" 2>/dev/null |
+            awk 'NR == 1 { print $2 }') || true
+          case "$status" in
+            404) ;;
+            200) echo "::error::$GITHUB_REF_NAME is already published -- never re-tag; cut a patch"
+                 exit 1 ;;
+            *) echo "::error::cannot tell whether $GITHUB_REF_NAME is published (HTTP ${status:-no response})"
+               exit 1 ;;
+          esac
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          # The root has go.work and no go.mod, so without this setup-go finds
+          # no dependency file and silently caches nothing.
+          cache-dependency-path: |
+            agent/go.sum
+            server/go.sum
+      # Same pin, version and package list as ci.yml.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+          args: ./schema/... ./agent/... ./server/...
+      # Uncached, because Go's test cache ignores TZ; Santiago because its DST
+      # change at midnight is what naive date arithmetic gets wrong.
+      - run: TZ=UTC go test -count=1 ./schema/... ./agent/... ./server/...
+      - run: TZ=America/Santiago go test -count=1 ./schema/... ./agent/... ./server/...
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+        working-directory: dashboard
+      - run: npm run lint
+        working-directory: dashboard
+      - run: npm run format:check
+        working-directory: dashboard
+      # Type-checks the server contract fixtures too (tests/contract.test.ts).
+      - run: npx tsc -b
+        working-directory: dashboard
+      - run: npm test
+        working-directory: dashboard
+
+  # CGO_ENABLED=0 and a pure-Go SQLite driver let darwin cross-compile here;
+  # a macOS runner bills at ten times the rate.
+  agent:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [arm64, amd64]
+    env:
+      ASSET: llm-tracker-agent-darwin-${{ matrix.goarch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: |
+            agent/go.sum
+            server/go.sum
+      - name: Build
+        working-directory: agent
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w -X main.version=$GITHUB_REF_NAME" -o "../$ASSET" .
+      # install.sh and `agent upgrade` check the download against this before
+      # they run it.
+      - name: Checksum
+        run: shasum -a 256 "$ASSET" > "$ASSET.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ASSET }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  server:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    env:
+      ASSET: llm-tracker-server-${{ matrix.goos }}-${{ matrix.goarch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      # The server embeds the dashboard.
+      - run: npm ci
+        working-directory: dashboard
+      - run: npm run build
+        working-directory: dashboard
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache-dependency-path: |
+            agent/go.sum
+            server/go.sum
+      - name: Build
+        working-directory: server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w -X main.version=$GITHUB_REF_NAME" -o "../$ASSET" .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # The server as a container. The agent gets none: it reads a developer's home
+  # directory and runs under launchd.
+  image:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Third-party actions are pinned to commits: a job that can push packages
+      # must not run whatever a mutable tag points at today.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Pushed untagged, by digest: publish applies the version tag once every
+      # artefact exists, so a release that never goes live leaves no pullable
+      # version behind. No gha cache: it is scoped to this tag's ref, and no
+      # later release could restore it.
+      - id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          # One runner for both: the Dockerfile's build stages cross-compile.
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ github.ref_name }}
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/llm-tracker-server,push-by-digest=true,name-canonical=true,push=true
+
+  publish:
+    needs: [agent, server, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      latest: ${{ steps.latest.outputs.latest }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      IMAGE: ghcr.io/${{ github.repository_owner }}/llm-tracker-server
+      # Every artefact install.sh, `agent upgrade` and the README rely on, by
+      # name. Each build job uploads an artifact named after its binary.
+      ASSETS: >-
+        llm-tracker-agent-darwin-arm64 llm-tracker-agent-darwin-arm64.sha256
+        llm-tracker-agent-darwin-amd64 llm-tracker-agent-darwin-amd64.sha256
+        llm-tracker-server-linux-amd64 llm-tracker-server-linux-arm64
+        llm-tracker-server-darwin-arm64
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      # Each file is taken only from the artifact it belongs to, so no other
+      # artifact in the run can supply a promised name. A checksum file must be
+      # exactly the line shasum writes for its own binary.
+      - name: Stage the artefacts and check their checksums
+        run: |
+          mkdir release
+          for f in $ASSETS; do cp "artifacts/${f%.sha256}/$f" release/; done
+          cd release
+          for sum in *.sha256; do
+            [[ $(<"$sum") == "$(shasum -a 256 "${sum%.sha256}")" ]] ||
+              { echo "::error::$sum is not the checksum of ${sum%.sha256}"; exit 1; }
+          done
+      # Deleting a tag turns its published release back into a draft, so an
+      # existing draft is reused only if this commit built it.
+      - name: Create the draft, or reuse this commit's
+        run: |
+          marker="Built from $GITHUB_SHA."
+          found=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.tag_name == env.TAG) | "\(.id) \(.draft)"')
+          if [[ -z $found ]]; then
+            gh release create "$TAG" --verify-tag --draft --title "$TAG" --notes "$marker"
+            exit 0
+          fi
+          if [[ $(wc -l <<<"$found") -ne 1 ]]; then
+            echo "::error::several releases carry $TAG; delete the stray drafts and re-run"
+            exit 1
+          fi
+          read -r id draft <<<"$found"
+          if [[ $draft != true ]]; then
+            echo "::error::$TAG is already published -- never re-tag; cut a patch"
+            exit 1
+          fi
+          body=$(gh api "repos/$GITHUB_REPOSITORY/releases/$id" --jq .body)
+          if ! grep -qxF "$marker" <<<"${body//$'\r'/}"; then
+            echo "::error::the draft for $TAG was not built from $GITHUB_SHA -- never re-tag; cut a patch"
+            exit 1
+          fi
+      - name: Attach
+        run: gh release upload "$TAG" release/* --clobber
+      - name: Every promised artefact is attached, and nothing else
+        run: |
+          want=$(tr -s ' ' '\n' <<<"$ASSETS" | sort)
+          have=$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)
+          if [[ $have != "$want" ]]; then
+            echo "::error::the draft's assets are not the promised set"
+            diff <(echo "$want") <(echo "$have") || true
+            exit 1
+          fi
+      # install.sh and `agent upgrade` fetch whatever is Latest, so a backport
+      # (v1.3.5 after v1.4.0) must not become it.
+      - name: Is this the highest release
+        id: latest
+        run: |
+          highest=$( { echo "$TAG"
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              --jq '.[] | select(.draft or .prerelease | not) | .tag_name'; } |
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [[ $highest == "$TAG" ]]; then latest=true; else latest=false; fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+      # A tag moved while this run built would go live over another commit.
+      - name: The tag still points at this commit
+        run: |
+          at=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
+          if [[ $at != "$GITHUB_SHA" ]]; then
+            echo "::error::$TAG now points at $at, not $GITHUB_SHA -- never re-tag; cut a patch"
+            exit 1
+          fi
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Retags the pushed manifest by digest: no rebuild, both architectures.
+      - name: Tag the image
+        env:
+          DIGEST: ${{ needs.image.outputs.digest }}
+          LATEST: ${{ steps.latest.outputs.latest }}
+        run: |
+          tags=(--tag "$IMAGE:$TAG")
+          if [[ $LATEST == true ]]; then tags+=(--tag "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" "$IMAGE@$DIGEST"
+      - name: Publish
+        env:
+          LATEST: ${{ steps.latest.outputs.latest }}
+        run: gh release edit "$TAG" --draft=false --latest="$LATEST"
+
+  # The server follows each release with the upgrade an operator would run by
+  # hand, which snapshots the data disk first. A backport is published but not
+  # deployed, as it would move the server backwards. Nothing deploys until
+  # `deploy/gcp/deploy.sh create` has set the deployment up, which is what
+  # stores these variables.
+  deploy:
+    needs: publish
+    if: needs.publish.outputs.latest == 'true' && vars.GCP_SERVICE_ACCOUNT != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # GitHub's OIDC token, which Google exchanges for short-lived credentials
+      # of the deploy service account: no key is stored in the repository.
+      id-token: write
+    # One upgrade at a time, whichever tag started it.
+    concurrency:
+      group: deploy
+    # A hung SSH session would otherwise hold the runner for six hours.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ vars.GCP_PROJECT }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Upgrade the server
+        env:
+          TAG: ${{ github.ref_name }}
+        run: deploy/gcp/deploy.sh upgrade "$TAG"
