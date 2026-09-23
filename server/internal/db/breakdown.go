@@ -50,7 +50,7 @@ func (d *DB) breakdown(ctx context.Context, w Window, dimension, joinSQL, labelE
 		}
 		g.Key, g.Label = key.String, lbl.String
 		if g.Key == "" {
-			g.Key = "unknown"
+			g.Key = unknownKey
 		}
 		out = append(out, g)
 	}
@@ -257,7 +257,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 		qargs = append(append(qargs, args...), limit)
 	}
 	q := fmt.Sprintf(`
-		SELECT %[1]s, COALESCE(NULLIF(%[2]s,''), 'unknown'),
+		SELECT %[1]s, COALESCE(NULLIF(%[2]s,''), '`+unknownKey+`'),
 		       SUM(total_tokens),
 		       `+billedUSD+`,
 		       `+rateCardUSD+`,

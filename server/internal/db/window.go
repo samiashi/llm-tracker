@@ -22,21 +22,33 @@ func (w Window) Normalise() Window {
 	return w
 }
 
+// unknownKey is the key a breakdown gives rows with no value for its
+// dimension. By person, those are the events of no account, and the dashboard
+// feeds the key back as the filter that selects them.
+const unknownKey = "unknown"
+
 // where builds the shared filter clause and its arguments.
-//
-// The person filter resolves through the account table as a subquery rather
-// than a join, so every query can apply it the same way without each one
-// growing a join it otherwise would not need.
 func (w Window) where(col string) (string, []any) {
 	clause := col + "day BETWEEN ? AND ?"
 	args := []any{w.From, w.To}
 	if w.Person != "" {
-		// Match the ref directly as well as through the email: ByPerson keys
-		// an account with no email by its ref, and the dashboard feeds that
-		// key back as the filter, which no email matches.
-		clause += " AND (" + col + "account_ref IN (SELECT ref FROM account WHERE email = ?)" +
-			" OR " + col + "account_ref = ?)"
-		args = append(args, w.Person, w.Person)
+		clause += " AND " + col + "account_ref IN " + personRefs
+		args = append(args, personArgs(w.Person)...)
 	}
 	return clause, args
+}
+
+// personRefs resolves a person to account refs through a subquery rather than
+// a join, so every query applies it the same way. One IN list, so the planner
+// ranges over (account_ref, day) per ref instead of reading the person's whole
+// history. The key is a ref too: ByPerson keys an account with no email by it.
+const personRefs = "(SELECT ref FROM account WHERE email = ? UNION ALL SELECT ?)"
+
+// personArgs binds personRefs for a person key.
+func personArgs(person string) []any {
+	ref := person
+	if person == unknownKey {
+		ref = ""
+	}
+	return []any{person, ref}
 }
