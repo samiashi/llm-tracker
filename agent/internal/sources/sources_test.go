@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
@@ -269,4 +270,35 @@ func collectAndCommit(t *testing.T, a Adapter, rel, body string) []schema.Event 
 		t.Fatal(err)
 	}
 	return storedEvents(t, st)
+}
+
+// An event is credited to whoever was signed in at its own time. While nobody
+// was, that is nobody: not the account signed in before, nor the one signed
+// in now.
+func TestUsageIsCreditedToTheAccountSignedInAtItsTime(t *testing.T) {
+	at := func(hhmm string) time.Time { return parseTS("2026-09-20T" + hhmm + ":00Z") }
+	c := &Ctx{
+		Accounts: map[string]*schema.Account{
+			"openai":    {Provider: "openai", Ref: "openai:b"},
+			"anthropic": {Provider: "anthropic", Ref: "anthropic:now"},
+		},
+		AccountHistory: []store.AccountWindow{
+			{Provider: "openai", Ref: "openai:a", ObservedAt: at("10:00")},
+			{Provider: "openai", Ref: "", ObservedAt: at("12:00")},
+			{Provider: "openai", Ref: "openai:b", ObservedAt: at("14:00")},
+		},
+	}
+	for _, tc := range []struct {
+		provider, when, want string
+	}{
+		{"openai", "09:00", "openai:a"}, // before the first switch: the earliest known
+		{"openai", "11:00", "openai:a"},
+		{"openai", "13:00", ""}, // signed out
+		{"openai", "15:00", "openai:b"},
+		{"anthropic", "13:00", "anthropic:now"}, // no switch recorded: whoever is signed in
+	} {
+		if got := c.AccountRefAt(tc.provider, at(tc.when)); got != tc.want {
+			t.Errorf("%s at %s: credited to %q, want %q", tc.provider, tc.when, got, tc.want)
+		}
+	}
 }

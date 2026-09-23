@@ -25,8 +25,8 @@ type Ctx struct {
 	// account active right now: AccountRefAt's fallback for a provider with
 	// no recorded switch.
 	Accounts map[string]*schema.Account
-	// AccountHistory is every observed switch, oldest first, so an event can
-	// be attributed by its own timestamp.
+	// AccountHistory is every observed switch, sign-outs included, oldest
+	// first, so an event can be attributed by its own timestamp.
 	AccountHistory []store.AccountWindow
 
 	events []schema.Event
@@ -54,37 +54,32 @@ func (c *Ctx) takeUnparsed() int {
 	return n
 }
 
-// AccountRef returns the currently active account for a provider, or "".
-func (c *Ctx) AccountRef(provider string) string {
-	if a := c.Accounts[provider]; a != nil {
-		return a.Ref
-	}
-	return ""
-}
-
-// AccountRefAt returns the account that was active at a given moment.
+// AccountRefAt returns the account that was active at a given moment, or ""
+// when nobody was signed in.
 //
 // Harnesses that write no account into their logs must be attributed this way,
 // or reading a month-old session credits it to whoever is signed in today.
 // Events older than the first recorded switch fall back to the earliest known
 // account: a guess, since nothing on disk records who produced them.
 func (c *Ctx) AccountRefAt(provider string, ts time.Time) string {
-	best := ""
+	ref, found := "", false
 	for _, w := range c.AccountHistory {
 		if w.Provider != provider {
 			continue
 		}
-		if best == "" || !w.ObservedAt.After(ts) {
-			best = w.Ref
+		if !found || !w.ObservedAt.After(ts) {
+			ref, found = w.Ref, true
 		}
 		if w.ObservedAt.After(ts) {
 			break
 		}
 	}
-	if best == "" {
-		return c.AccountRef(provider)
+	if !found {
+		if a := c.Accounts[provider]; a != nil {
+			return a.Ref
+		}
 	}
-	return best
+	return ref
 }
 
 // emit records one usage event.

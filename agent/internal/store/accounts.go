@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-// AccountWindow is one span during which an account was the active one.
+// AccountWindow is one span during which an account was the active one. An
+// empty Ref is a span in which nobody was signed in.
 type AccountWindow struct {
 	Provider   string
 	Ref        string
@@ -16,18 +17,27 @@ type AccountWindow struct {
 
 // RecordActiveAccount appends a window when the active account has changed.
 // Called once per pass, so a switch is located to within one interval.
+//
+// An empty ref records a sign-out, or a move to an API key: unrecorded, the
+// account signed in before keeps being credited with usage it did not run.
+// Only a signed-in window has anything to end, so a provider nobody ever
+// signed in to records nothing.
 func (s *Store) RecordActiveAccount(ctx context.Context, provider, ref string) error {
-	if provider == "" || ref == "" {
+	if provider == "" {
 		return nil
 	}
 	var last string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT ref FROM account_window WHERE provider = ?
 		 ORDER BY observed_at DESC LIMIT 1`, provider).Scan(&last)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if ref == "" {
+			return nil
+		}
+	case err != nil:
 		return err
-	}
-	if last == ref {
+	case last == ref:
 		return nil
 	}
 	_, err = s.db.ExecContext(ctx,

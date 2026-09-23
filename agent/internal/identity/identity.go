@@ -12,6 +12,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,15 +66,65 @@ func hardwareID(ctx context.Context) string {
 
 var platformUUID = regexp.MustCompile(`"IOPlatformUUID"\s*=\s*"([^"]+)"`)
 
-// DetectClaude reads the active Anthropic account from ~/.claude.json, not the
-// Keychain: reading that triggers a consent prompt.
-func DetectClaude() (*schema.Account, error) {
+// Login is one provider's sign-in state, as its harness's config records it.
+type Login struct {
+	Provider string
+	// Account is who is signed in, or nil when the config names nobody:
+	// signed out, or on an API key.
+	Account *schema.Account
+}
+
+// Logins returns the sign-in state of every provider whose config could be
+// read, Anthropic first. A missing config means nobody is signed in: Codex
+// deletes auth.json on logout. One that exists but cannot be read or parsed
+// is left out rather than taken for a sign-out: ~/.claude.json is rewritten
+// constantly, and a half-written copy would end the account's window and
+// strip its seat from the usage that follows.
+func Logins() []Login {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	b, err := os.ReadFile(filepath.Join(home, ".claude.json"))
-	if err != nil {
+	var out []Login
+	for _, p := range []struct {
+		provider string
+		read     func(home string) (*schema.Account, error)
+	}{
+		{"anthropic", claudeAccount},
+		{"openai", codexAccount},
+	} {
+		if a, err := p.read(home); err == nil {
+			out = append(out, Login{Provider: p.provider, Account: a})
+		}
+	}
+	return out
+}
+
+// All returns the accounts signed in now, Anthropic first.
+func All() []*schema.Account {
+	var out []*schema.Account
+	for _, l := range Logins() {
+		if l.Account != nil {
+			out = append(out, l.Account)
+		}
+	}
+	return out
+}
+
+// readConfig returns a harness's config file, or nil when there is none.
+func readConfig(path string) ([]byte, error) {
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return b, err
+}
+
+// claudeAccount reads the signed-in Anthropic account from ~/.claude.json,
+// not the Keychain: reading that triggers a consent prompt.
+func claudeAccount(home string) (*schema.Account, error) {
+	b, err := readConfig(filepath.Join(home, ".claude.json"))
+	if b == nil || err != nil {
 		return nil, err
 	}
 	var doc struct {
@@ -97,18 +149,14 @@ func DetectClaude() (*schema.Account, error) {
 	}, nil
 }
 
-// DetectCodex reads the active OpenAI account from ~/.codex/auth.json.
+// codexAccount reads the signed-in OpenAI account from ~/.codex/auth.json.
 //
 // The plan type lives in the id_token's claims, so the JWT payload is decoded.
 // The signature is never verified and the token never sent: it only names the
 // account that is logged in.
-func DetectCodex() (*schema.Account, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	b, err := os.ReadFile(filepath.Join(home, ".codex", "auth.json"))
-	if err != nil {
+func codexAccount(home string) (*schema.Account, error) {
+	b, err := readConfig(filepath.Join(home, ".codex", "auth.json"))
+	if b == nil || err != nil {
 		return nil, err
 	}
 	var doc struct {
@@ -156,17 +204,4 @@ func decodeJWTClaims(token string) map[string]any {
 		return nil
 	}
 	return claims
-}
-
-// All returns every account detectable on this machine. A missing or
-// unreadable config is not an error: people have one harness and not another.
-func All() []*schema.Account {
-	var out []*schema.Account
-	if a, err := DetectClaude(); err == nil && a != nil {
-		out = append(out, a)
-	}
-	if a, err := DetectCodex(); err == nil && a != nil {
-		out = append(out, a)
-	}
-	return out
 }

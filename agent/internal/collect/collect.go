@@ -230,13 +230,17 @@ func Run(ctx context.Context, st *store.Store, home string, log *slog.Logger) (*
 	}
 
 	accounts := map[string]*schema.Account{}
-	for _, a := range identity.All() {
-		accounts[a.Provider] = a
+	for _, l := range identity.Logins() {
+		ref := ""
+		if l.Account != nil {
+			ref = l.Account.Ref
+			accounts[l.Provider] = l.Account
+		}
 		// Recorded before anything is read, so this pass's events are
 		// attributed against a timeline that includes any switch since the
-		// last one.
-		if err := st.RecordActiveAccount(ctx, a.Provider, a.Ref); err != nil {
-			log.Warn("record active account", "provider", a.Provider, "err", err)
+		// last one, a sign-out included.
+		if err := st.RecordActiveAccount(ctx, l.Provider, ref); err != nil {
+			log.Warn("record active account", "provider", l.Provider, "err", err)
 		}
 	}
 

@@ -440,3 +440,60 @@ func TestReKeyedRowsAreDedupedOnlyAgainstTheirReplacement(t *testing.T) {
 		}
 	}
 }
+
+// Moved from a ChatGPT sign-in to an API key, Codex names no account, and the
+// usage that follows must not be credited to the seat signed in before.
+func TestUsageAfterASignOutIsNotCreditedToTheAccountBefore(t *testing.T) {
+	ctx := context.Background()
+	log := slog.New(slog.DiscardHandler)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	st, path := newStore(t)
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(home, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write(".codex/auth.json", `{"OPENAI_API_KEY":null,"tokens":{"account_id":"acct-seat","id_token":""}}`)
+	if _, err := Run(ctx, st, home, log); err != nil {
+		t.Fatal(err)
+	}
+	// A pass later, as the daemon runs them: windows are keyed to the second.
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if _, err := db.Exec(`UPDATE account_window SET observed_at = observed_at - 300`); err != nil {
+		t.Fatal(err)
+	}
+
+	write(".codex/auth.json", `{"OPENAI_API_KEY":"sk-test","tokens":null}`)
+	at := time.Now().Add(time.Minute).UTC().Format(time.RFC3339)
+	write(".codex/sessions/2026/09/23/rollout-x.jsonl", fmt.Sprintf(
+		`{"timestamp":%q,"type":"event_msg","payload":{"type":"token_count","info":{`+
+			`"last_token_usage":{"input_tokens":1000,"output_tokens":10,"total_tokens":1010},`+
+			`"total_token_usage":{"input_tokens":1000,"output_tokens":10,"total_tokens":1010}}}}`+"\n", at))
+	if _, err := Run(ctx, st, home, log); err != nil {
+		t.Fatal(err)
+	}
+
+	_, payloads, err := st.Unsent(ctx, 10)
+	if err != nil || len(payloads) != 1 {
+		t.Fatalf("got %d events, err %v; want the one response", len(payloads), err)
+	}
+	var e schema.Event
+	if err := json.Unmarshal(payloads[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.AccountRef != "" || e.CostBasis != schema.CostUnknown {
+		t.Fatalf("usage on an API key was credited to %q as %q; nobody was signed in",
+			e.AccountRef, e.CostBasis)
+	}
+}

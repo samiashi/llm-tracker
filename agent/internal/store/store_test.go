@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -418,5 +419,39 @@ func TestOpeningAnOlderStoreDropsItsQuotaTable(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatal("the quota table survived reopening")
+	}
+}
+
+// Transcripts name no account, so an event is credited to whoever was signed
+// in at its own time. A switch never recorded credits later usage to the
+// login before it, and a sign-out is a switch: to nobody.
+func TestEveryAccountSwitchIsRecordedOnceASignOutIncluded(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	record := func(refs ...string) {
+		t.Helper()
+		for _, ref := range refs {
+			if err := s.RecordActiveAccount(ctx, "anthropic", ref); err != nil {
+				t.Fatal(err)
+			}
+			// A pass later, as the daemon records them: windows are keyed to
+			// the second.
+			if _, err := s.db.ExecContext(ctx, `UPDATE account_window SET observed_at = observed_at - 300`); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// Signed out before anyone ever signed in: nothing to end.
+	record("", "anthropic:a", "anthropic:a", "anthropic:b", "", "", "anthropic:b")
+
+	ws, err := s.AccountWindows(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refs []string
+	for _, w := range ws {
+		refs = append(refs, w.Ref)
+	}
+	if want := []string{"anthropic:a", "anthropic:b", "", "anthropic:b"}; !slices.Equal(refs, want) {
+		t.Fatalf("windows %q, want %q: one per switch", refs, want)
 	}
 }

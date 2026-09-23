@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS unknown_source (
   note       TEXT NOT NULL DEFAULT ''
 );
 
--- When each account became the active one.
+-- When each account became the active one; an empty ref, when nobody was.
 --
 -- Claude Code transcripts carry no account field whatsoever, so the only
 -- signal is which account was signed in at the time. That is a single value
