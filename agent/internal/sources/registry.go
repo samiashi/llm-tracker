@@ -59,17 +59,10 @@ func Names() []string {
 }
 
 // Available reports whether any of an adapter's roots exist on this machine.
-func Available(a Adapter, c *Ctx) bool {
-	for _, r := range a.Roots() {
-		if _, err := os.Stat(filepath.Join(c.Home, r)); err == nil {
-			return true
-		}
-	}
-	return false
-}
+func Available(a Adapter, c *Ctx) bool { return len(AbsRoots(a, c)) > 0 }
 
 // AbsRoots resolves an adapter's roots against the home directory, keeping
-// only those that exist.
+// only the directories that exist.
 func AbsRoots(a Adapter, c *Ctx) []string {
 	var out []string
 	for _, r := range a.Roots() {

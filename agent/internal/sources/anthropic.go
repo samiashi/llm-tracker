@@ -239,7 +239,7 @@ func (a ClaudeCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 		// A session launched from Cowork keeps the account UUID in its project
 		// path, which is exact. Everything else falls back to whichever
 		// account was signed in when the event happened.
-		acct := accountInPath(path)
+		acct := scratchAccount(path)
 		if acct == "" {
 			acct = c.AccountRefAt("anthropic", parseTS(l.Timestamp))
 		}
@@ -253,27 +253,11 @@ func (a ClaudeCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 	})
 }
 
-// --- Cowork ----------------------------------------------------------------
-
-func init() { Register(Cowork{}) }
-
-type Cowork struct{}
-
-func (Cowork) Name() schema.Source { return schema.SourceCowork }
-
-// Roots returns both session directories: Anthropic is renaming
-// local-agent-mode-sessions to claude-code-sessions, and a machine that spanned
-// the change keeps part of its history in each.
-func (Cowork) Roots() []string {
-	const base = "Library/Application Support/Claude/"
-	return []string{base + "local-agent-mode-sessions", base + "claude-code-sessions"}
-}
-
-// accountInPath finds the account UUID that follows "workspaces-" in a path.
+// scratchAccount finds the account UUID that follows "workspaces-" in a path.
 // Cowork runs Claude Code sessions in a scratch workspace named after the
 // account, so their project directory carries the attribution the transcript
 // omits.
-func accountInPath(path string) string {
+func scratchAccount(path string) string {
 	for _, seg := range strings.Split(path, string(os.PathSeparator)) {
 		for _, part := range strings.Split(seg, "-scratch-") {
 			if i := strings.LastIndex(part, "workspaces-"); i >= 0 {
@@ -305,10 +289,26 @@ func isUUID(s string) bool {
 	return true
 }
 
-// accountFromPath recovers the owning account from the directory layout.
-// Cowork nests sessions as <root>/<accountUuid>/<orgUuid>/<sessionUuid>/, so
-// attribution is exact, even for history captured before the agent ran.
-func accountFromPath(root, path string) string {
+// --- Cowork ----------------------------------------------------------------
+
+func init() { Register(Cowork{}) }
+
+type Cowork struct{}
+
+func (Cowork) Name() schema.Source { return schema.SourceCowork }
+
+// Roots returns both session directories: Anthropic is renaming
+// local-agent-mode-sessions to claude-code-sessions, and a machine that spanned
+// the change keeps part of its history in each.
+func (Cowork) Roots() []string {
+	const base = "Library/Application Support/Claude/"
+	return []string{base + "local-agent-mode-sessions", base + "claude-code-sessions"}
+}
+
+// coworkAccount recovers the owning account from Cowork's directory layout,
+// <root>/<accountUuid>/<orgUuid>/<sessionUuid>/, so attribution is exact, even
+// for history captured before the agent ran.
+func coworkAccount(root, path string) string {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		return ""
@@ -332,7 +332,7 @@ func (a Cowork) Collect(ctx context.Context, c *Ctx) (Result, error) {
 		acct := c.AccountRefAt("anthropic", parseTS(l.Timestamp))
 		for _, r := range roots {
 			if strings.HasPrefix(path, r) {
-				if got := accountFromPath(r, path); got != "" {
+				if got := coworkAccount(r, path); got != "" {
 					acct = got
 				}
 				break

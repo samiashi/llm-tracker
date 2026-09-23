@@ -425,3 +425,29 @@ func TestEveryAccountSwitchIsRecordedOnceASignOutIncluded(t *testing.T) {
 		t.Fatalf("windows %q, want %q: one per switch", refs, want)
 	}
 }
+
+// synchronous and busy_timeout are per connection. Set once in the schema,
+// they reach only the connection that ran it, and database/sql opens another
+// whenever it drops one: a store that then waits on no lock, or syncs every
+// commit.
+func TestEveryConnectionGetsTheStoresPragmas(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	s.db.SetMaxIdleConns(0) // each query below on a connection of its own
+	for i := range 2 {
+		var mode string
+		var synchronous, timeout int
+		if err := s.db.QueryRowContext(ctx, `PRAGMA journal_mode`).Scan(&mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.db.QueryRowContext(ctx, `PRAGMA synchronous`).Scan(&synchronous); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.db.QueryRowContext(ctx, `PRAGMA busy_timeout`).Scan(&timeout); err != nil {
+			t.Fatal(err)
+		}
+		if mode != "wal" || synchronous != 1 || timeout != 5000 {
+			t.Fatalf("connection %d: journal_mode=%s synchronous=%d busy_timeout=%d, want wal, 1 (NORMAL), 5000",
+				i, mode, synchronous, timeout)
+		}
+	}
+}

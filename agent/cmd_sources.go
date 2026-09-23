@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -56,16 +57,16 @@ func cmdProbe(home, name string) error {
 	}
 
 	fmt.Printf("probing %s\n\nroots:\n", ad.Name())
-	anyRoot := false
+	present := sources.AbsRoots(ad, &sources.Ctx{Home: home})
 	for _, r := range ad.Roots() {
 		p := filepath.Join(home, r)
 		state := "missing"
-		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-			state, anyRoot = "found", true
+		if slices.Contains(present, p) {
+			state = "found"
 		}
 		fmt.Printf("  [%s] %s\n", state, p)
 	}
-	if !anyRoot {
+	if len(present) == 0 {
 		fmt.Println("\nNothing to read: this harness is not installed here.")
 		return nil
 	}

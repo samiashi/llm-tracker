@@ -119,10 +119,14 @@ func (Codex) Name() schema.Source { return schema.SourceCodex }
 // keeps its date, so an archived parent must be read before its live fork.
 func (Codex) Roots() []string { return []string{".codex/archived_sessions", ".codex/sessions"} }
 
-// MetaPrefixes names the per-file context key, which predates the
-// "<source>:" convention and cannot be renamed without stranding what
+// codexCtxKey prefixes a rollout's path to key its parser state. It predates
+// the "<source>:" convention and cannot be renamed without stranding what
 // existing stores hold under it.
-func (Codex) MetaPrefixes() []string { return []string{"codexctx:"} }
+const codexCtxKey = "codexctx:"
+
+// MetaPrefixes names the per-file context key, which rewind and resync must
+// clear with the cursors.
+func (Codex) MetaPrefixes() []string { return []string{codexCtxKey} }
 
 func codexSurface(originator string) schema.Surface {
 	o := strings.ToLower(originator)
@@ -314,7 +318,7 @@ func codexEvent(c *Ctx, fc *fileCtx, acct, nativeID, sessionID string, u codexTo
 
 func loadFileCtx(ctx context.Context, c *Ctx, path string) fileCtx {
 	var fc fileCtx
-	if v, err := c.Store.Meta(ctx, "codexctx:"+path); err == nil && v != "" {
+	if v, err := c.Store.Meta(ctx, codexCtxKey+path); err == nil && v != "" {
 		_ = json.Unmarshal([]byte(v), &fc)
 	}
 	return fc
@@ -326,6 +330,6 @@ func loadFileCtx(ctx context.Context, c *Ctx, path string) fileCtx {
 // counted again, and a fork's copied header relabels the fork.
 func stageFileCtx(c *Ctx, path string, fc fileCtx) {
 	if b, err := json.Marshal(fc); err == nil {
-		c.StageMeta("codexctx:"+path, string(b))
+		c.StageMeta(codexCtxKey+path, string(b))
 	}
 }

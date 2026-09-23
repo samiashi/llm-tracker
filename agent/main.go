@@ -256,7 +256,7 @@ func humanBytes(n int64) string {
 
 // collectorDataDir is the directory a command acts on: -data if given, else
 // the one the installed collector's LaunchAgent names, else the default. A
-// collector installed with -data would otherwise be configured, queried,
+// collector installed with -data would otherwise be enrolled, queried,
 // reinstalled and upgraded against a store it never reads.
 func collectorDataDir(dataFlag, home string) string {
 	if dataFlag != "" {

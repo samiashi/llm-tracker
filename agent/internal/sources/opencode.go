@@ -28,8 +28,11 @@ type OpenCode struct{}
 func (OpenCode) Name() schema.Source { return schema.SourceOpenCode }
 func (OpenCode) Roots() []string     { return []string{".local/share/opencode"} }
 
-func (OpenCode) dbPath(c *Ctx) string {
-	return filepath.Join(c.Home, ".local", "share", "opencode", "opencode.db")
+// openCodeWatermarkKey holds the message table's last time_updated read.
+const openCodeWatermarkKey = "opencode:message_watermark"
+
+func (a OpenCode) dbPath(c *Ctx) string {
+	return filepath.Join(c.Home, a.Roots()[0], "opencode.db")
 }
 
 // Collect reads one event per assistant response, from the `message` table:
@@ -56,7 +59,7 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 	// the repeat into an update. The key is the message table's own: another
 	// table's watermark counts in a different time base.
 	var since int64
-	if v, err := c.Store.Meta(ctx, "opencode:message_watermark"); err == nil && v != "" {
+	if v, err := c.Store.Meta(ctx, openCodeWatermarkKey); err == nil && v != "" {
 		since, _ = strconv.ParseInt(v, 10, 64)
 	}
 
@@ -172,7 +175,7 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 	// Staged, so the watermark commits in the same transaction as the rows it
 	// covers: an interrupted pass keeps both or neither.
 	if newWatermark > since {
-		c.StageMeta("opencode:message_watermark", strconv.FormatInt(newWatermark, 10))
+		c.StageMeta(openCodeWatermarkKey, strconv.FormatInt(newWatermark, 10))
 	}
 	stored, err := c.CommitPending(ctx)
 	res.Stored = stored

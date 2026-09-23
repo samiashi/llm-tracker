@@ -17,10 +17,6 @@ import (
 type Store struct{ db *sql.DB }
 
 const ddl = `
-PRAGMA journal_mode=WAL;
-PRAGMA synchronous=NORMAL;
-PRAGMA busy_timeout=5000;
-
 -- One row per source file, tracking how far into it we have read.
 CREATE TABLE IF NOT EXISTS cursor (
   path       TEXT PRIMARY KEY,
@@ -37,6 +33,8 @@ CREATE TABLE IF NOT EXISTS event (
   total_tokens INTEGER NOT NULL DEFAULT 0,
   collector    INTEGER NOT NULL DEFAULT 0,
   payload      TEXT NOT NULL,
+  -- 0 awaiting upload, 1 delivered, 2 refused by the server's retention
+  -- floor (see Refused).
   sent         INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_event_unsent ON event(sent, ts);
@@ -78,8 +76,13 @@ CREATE TABLE IF NOT EXISTS meta (
 // Path is the archive's file in a data directory.
 func Path(dataDir string) string { return filepath.Join(dataDir, "agent.db") }
 
+// Open opens the archive at path, creating it if need be.
+//
+// The pragmas go in the DSN, which applies them to every connection: set once
+// in the DDL they reach only the first, and database/sql can open another.
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", path+
+		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
 	if err != nil {
 		return nil, err
 	}

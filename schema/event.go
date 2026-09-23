@@ -62,9 +62,9 @@ const (
 	// claiming spend.
 	CostRateCard CostBasis = "rate_card_equivalent"
 	// CostUnknown means the adapter cannot tell whether the usage was paid
-	// per token or covered by a seat: Claude Code, Cowork, Codex and Kimi with
-	// no detected account, and all of Copilot. The server still prices it, as
-	// a third figure never summed with billed or rate-card spend.
+	// per token or covered by a seat: Claude Code, Cowork and Codex with no
+	// detected account, and all of Kimi and Copilot. The server still prices
+	// it, as a third figure never summed with billed or rate-card spend.
 	CostUnknown CostBasis = "unknown"
 )
 
@@ -101,8 +101,9 @@ type Event struct {
 
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
-	// Endpoint is the base URL when it is not the provider default. Pricing
-	// keys on it as well as the model (see PriceTable).
+	// Endpoint names who served the tokens when not the model's maker: a
+	// LiteLLM provider id such as "moonshot", or a local runtime such as
+	// "ollama". Pricing keys on it as well as the model (see PriceTable).
 	Endpoint string `json:"endpoint,omitempty"`
 
 	Usage Usage `json:"usage"`

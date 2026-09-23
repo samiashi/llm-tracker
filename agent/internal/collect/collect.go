@@ -144,8 +144,8 @@ func backfillIfUpgraded(ctx context.Context, st *store.Store, home string, log *
 	}
 	// Recorded before the version, so a kill between the two still leaves the
 	// dedupe to do; it runs after the pass that re-reads the replacements.
-	if pending := addDedupe(ctx, st, sources.SourcesNeedingDedupe(stored)); pending != nil {
-		log.Warn("backfill: recording sources to dedupe; retrying next pass", "err", pending)
+	if err := addDedupe(ctx, st, sources.SourcesNeedingDedupe(stored)); err != nil {
+		log.Warn("backfill: recording sources to dedupe; retrying next pass", "err", err)
 		failed = true
 	}
 	if failed {
