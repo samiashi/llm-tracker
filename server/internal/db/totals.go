@@ -116,10 +116,9 @@ func (d *DB) Daily(ctx context.Context, w Window) ([]Daily, error) {
 	return out, rows.Err()
 }
 
-// Compare returns totals for a window alongside the equally-sized window
-// immediately before it.
+// Compare is the totals of the equally-sized window immediately before the
+// one asked for. The window's own totals are the summary's.
 type Compare struct {
-	Current  Totals `json:"current"`
 	Previous Totals `json:"previous"`
 	// PreviousFrom and PreviousTo name the comparison window, so the
 	// dashboard can say what it compares against.
@@ -129,11 +128,6 @@ type Compare struct {
 
 func (d *DB) Compare(ctx context.Context, w Window) (Compare, error) {
 	w = w.Normalise()
-	cur, err := d.Totals(ctx, w)
-	if err != nil {
-		return Compare{}, err
-	}
-
 	from, err := time.Parse("2006-01-02", w.From)
 	if err != nil {
 		return Compare{}, err
@@ -153,5 +147,5 @@ func (d *DB) Compare(ctx context.Context, w Window) (Compare, error) {
 	if err != nil {
 		return Compare{}, err
 	}
-	return Compare{Current: cur, Previous: prevTotals, PreviousFrom: prev.From, PreviousTo: prev.To}, nil
+	return Compare{Previous: prevTotals, PreviousFrom: prev.From, PreviousTo: prev.To}, nil
 }

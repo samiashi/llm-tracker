@@ -104,7 +104,8 @@ export type UnknownRow = {
 export type Filter = { from: string; to: string; person?: string };
 
 export type Compare = {
-  current: Totals;
+  /** No longer sent: the summary's totals are the current window's. */
+  current?: Totals;
   previous: Totals;
   previous_from: string;
   previous_to: string;
