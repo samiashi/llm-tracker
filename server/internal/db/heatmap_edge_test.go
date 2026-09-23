@@ -60,9 +60,11 @@ func TestHeatmapReportsTheOffsetItsHoursUse(t *testing.T) {
 		t.Fatalf("cells = %+v, want one", cells)
 	}
 	local := at.Add(time.Duration(offset) * time.Minute)
-	if cells[0].Hour != local.Hour() || cells[0].Day != local.Format("2006-01-02") {
-		t.Fatalf("cell %s %02d:00, but the reported offset %d min puts %s at %s",
-			cells[0].Day, cells[0].Hour, offset, at.Format(time.RFC3339), local.Format("2006-01-02 15:04"))
+	if cells[0].Hour != local.Hour() || cells[0].Day != local.Format("2006-01-02") ||
+		cells[0].Weekday != int(local.Weekday()) {
+		t.Fatalf("cell %s (weekday %d) %02d:00, but the reported offset %d min puts %s at %s",
+			cells[0].Day, cells[0].Weekday, cells[0].Hour, offset, at.Format(time.RFC3339),
+			local.Format("Mon 2006-01-02 15:04"))
 	}
 	if _, want := at.In(time.Local).Zone(); offset != want/60 {
 		t.Fatalf("offset = %d min, want the server's own %d", offset, want/60)

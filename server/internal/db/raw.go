@@ -98,20 +98,13 @@ func (d *DB) Heatmap(ctx context.Context, w Window) ([]HeatCell, int, error) {
 	// event the total counts.
 	where, args := w.where("")
 
+	// Grouped on the local hour as an integer, and only each bucket turned
+	// into a date: formatting every row's timestamp doubled the query.
 	rows, err := d.read.QueryContext(ctx, `
-		SELECT local_day,
-		       CAST(strftime('%w', local_day) AS INTEGER),
-		       local_hour,
-		       SUM(total_tokens), SUM(events)
-		FROM (
-		  SELECT date((ts + ?), 'unixepoch')                        AS local_day,
-		         CAST(strftime('%H', (ts + ?), 'unixepoch') AS INTEGER) AS local_hour,
-		         total_tokens, 1 AS events
-		  FROM event WHERE `+where+`
-		)
-		GROUP BY local_day, local_hour
-		ORDER BY local_day, local_hour`,
-		append([]any{offset, offset}, args...)...)
+		SELECT (ts + ?) / 3600 AS hour, SUM(total_tokens), COUNT(*)
+		FROM event WHERE `+where+`
+		GROUP BY hour ORDER BY hour`,
+		append([]any{offset}, args...)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -119,10 +112,13 @@ func (d *DB) Heatmap(ctx context.Context, w Window) ([]HeatCell, int, error) {
 
 	out := make([]HeatCell, 0)
 	for rows.Next() {
+		var hour int64
 		var c HeatCell
-		if err := rows.Scan(&c.Day, &c.Weekday, &c.Hour, &c.Tokens, &c.Events); err != nil {
+		if err := rows.Scan(&hour, &c.Tokens, &c.Events); err != nil {
 			return nil, 0, err
 		}
+		local := time.Unix(hour*3600, 0).UTC()
+		c.Day, c.Weekday, c.Hour = local.Format("2006-01-02"), int(local.Weekday()), local.Hour()
 		out = append(out, c)
 	}
 	return out, offset / 60, rows.Err()
