@@ -45,7 +45,7 @@ func cmdUpgrade(log *slog.Logger, dataDir string, force bool) error {
 		return err
 	}
 
-	asset := fmt.Sprintf("llm-tracker-agent-%s-%s", runtime.GOOS, runtime.GOARCH)
+	asset := fmt.Sprintf("llm-tracker-agent-%s-%s", runtime.GOOS, releaseArch(runtime.GOARCH, appleSilicon()))
 	dir := filepath.Dir(self)
 	staged := filepath.Join(dir, "."+filepath.Base(self)+".new")
 	// Best-effort: on the success path the rename has already consumed it.
@@ -121,6 +121,17 @@ func cmdUpgrade(log *slog.Logger, dataDir string, force bool) error {
 	}
 	fmt.Println("collector restarted on", newVersion, "with its data in", dataDir)
 	return nil
+}
+
+// releaseArch is the architecture of the build to install: arm64 on Apple
+// Silicon, whatever this binary was built for. An amd64 build runs there
+// under Rosetta, which Apple is retiring; upgrading it to amd64 again would
+// keep the collector on Rosetta until it stops running at all.
+func releaseArch(goarch string, appleSilicon bool) string {
+	if appleSilicon {
+		return "arm64"
+	}
+	return goarch
 }
 
 // upgradeVerdict says whether to replace the running build with the latest

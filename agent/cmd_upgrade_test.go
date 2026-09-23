@@ -110,3 +110,23 @@ func TestUpgradeRestartsTheCollectorOnItsOwnDataDir(t *testing.T) {
 		t.Errorf("with -data given: %q, want the flag's directory", got)
 	}
 }
+
+// Under Rosetta this binary is amd64, but the Mac is not. Asked for its own
+// architecture, upgrade would keep an Apple Silicon Mac on Rosetta, which Apple
+// is retiring, until the collector stops running.
+func TestUpgradeInstallsTheBuildForTheHardware(t *testing.T) {
+	for _, tc := range []struct {
+		goarch       string
+		appleSilicon bool
+		want         string
+	}{
+		{"amd64", true, "arm64"}, // under Rosetta
+		{"arm64", true, "arm64"},
+		{"amd64", false, "amd64"}, // an Intel Mac
+	} {
+		if got := releaseArch(tc.goarch, tc.appleSilicon); got != tc.want {
+			t.Errorf("an %s build on Apple Silicon=%v installs %s, want %s",
+				tc.goarch, tc.appleSilicon, got, tc.want)
+		}
+	}
+}
