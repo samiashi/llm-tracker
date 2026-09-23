@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 // PruneResult reports what a retention pass did.
@@ -13,6 +14,27 @@ type PruneResult struct {
 	MachinesPruned int64 `json:"machines_pruned"`
 	RollupRows     int64 `json:"rollup_rows"`
 	EventsPruned   int64 `json:"events_pruned"`
+}
+
+// rollupKey is daily_rollup's primary key: every dimension a rolled-up day
+// keeps, and what Prune groups by. The two must agree or every prune aborts
+// on the key (see 00010), so a column the table gains is added here too;
+// TestRollupColumnsMatchTheSchema fails until it is.
+const rollupKey = "day, machine_id, account_ref, source, surface, provider, model, endpoint, " +
+	"effort, speed, inference_geo, is_subagent, cost_basis, cost_source"
+
+// rollupMeasures are what a rolled-up day sums, besides its event count.
+var rollupMeasures = []string{"input_tokens", "output_tokens", "cache_read_tokens",
+	"cache_write_5m", "cache_write_1h", "reasoning_tokens",
+	"web_search_calls", "web_fetch_calls", "total_tokens", "cost_usd"}
+
+// sumsOf renders SUM(c) AS c for each column.
+func sumsOf(cols []string) string {
+	out := make([]string, len(cols))
+	for i, c := range cols {
+		out[i] = "SUM(" + c + ") AS " + c
+	}
+	return strings.Join(out, ", ")
 }
 
 const (
@@ -96,32 +118,16 @@ func (d *DB) Prune(ctx context.Context, before string) (*PruneResult, error) {
 
 	if _, err := tx.ExecContext(ctx, `
 		CREATE TEMP TABLE merged AS
-		SELECT day, machine_id, account_ref, source, surface, provider, model, endpoint,
-		       effort, speed, inference_geo, is_subagent, cost_basis, cost_source,
-		       SUM(events) AS events, SUM(input_tokens) AS input_tokens,
-		       SUM(output_tokens) AS output_tokens, SUM(cache_read_tokens) AS cache_read_tokens,
-		       SUM(cache_write_5m) AS cache_write_5m, SUM(cache_write_1h) AS cache_write_1h,
-		       SUM(reasoning_tokens) AS reasoning_tokens,
-		       SUM(web_search_calls) AS web_search_calls, SUM(web_fetch_calls) AS web_fetch_calls,
-		       SUM(total_tokens) AS total_tokens, SUM(cost_usd) AS cost_usd
+		SELECT `+rollupKey+`, SUM(events) AS events, `+sumsOf(rollupMeasures)+`
 		FROM (
-		  SELECT day, machine_id, account_ref, source, surface, provider, model, endpoint,
-		         effort, speed, inference_geo, is_subagent, cost_basis, cost_source,
-		         1 AS events, input_tokens, output_tokens, cache_read_tokens,
-		         cache_write_5m, cache_write_1h, reasoning_tokens,
-		         web_search_calls, web_fetch_calls, total_tokens, cost_usd
+		  SELECT `+rollupKey+`, 1 AS events, `+strings.Join(rollupMeasures, ", ")+`
 		  FROM event WHERE day < ?
 		  UNION ALL
-		  SELECT day, machine_id, account_ref, source, surface, provider, model, endpoint,
-		         effort, speed, inference_geo, is_subagent, cost_basis, cost_source,
-		         events, input_tokens, output_tokens, cache_read_tokens,
-		         cache_write_5m, cache_write_1h, reasoning_tokens,
-		         web_search_calls, web_fetch_calls, total_tokens, cost_usd
+		  SELECT `+rollupKey+`, events, `+strings.Join(rollupMeasures, ", ")+`
 		  FROM daily_rollup
 		  WHERE day IN (SELECT DISTINCT day FROM event WHERE day < ?)
 		)
-		GROUP BY day, machine_id, account_ref, source, surface, provider, model, endpoint,
-		         effort, speed, inference_geo, is_subagent, cost_basis, cost_source`,
+		GROUP BY `+rollupKey,
 		before, before); err != nil {
 		return nil, err
 	}
@@ -131,12 +137,7 @@ func (d *DB) Prune(ctx context.Context, before string) (*PruneResult, error) {
 		return nil, err
 	}
 	r, err := tx.ExecContext(ctx, `
-		INSERT INTO daily_rollup (
-			day, machine_id, account_ref, source, surface, provider, model, endpoint,
-			effort, speed, inference_geo, is_subagent, cost_basis, cost_source,
-			events, input_tokens, output_tokens, cache_read_tokens,
-			cache_write_5m, cache_write_1h, reasoning_tokens,
-			web_search_calls, web_fetch_calls, total_tokens, cost_usd)
+		INSERT INTO daily_rollup (`+rollupKey+`, events, `+strings.Join(rollupMeasures, ", ")+`)
 		SELECT * FROM merged`)
 	if err != nil {
 		return nil, err
