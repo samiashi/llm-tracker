@@ -1,0 +1,5 @@
+The built dashboard is written here by `make dashboard` and is not committed.
+
+This file is, so that `//go:embed all:dist` in web.go has something to match
+and a fresh clone can build the server without building the frontend first.
+`all:` includes dot-prefixed files, which is what makes this work.
