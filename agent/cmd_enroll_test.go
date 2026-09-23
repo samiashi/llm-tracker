@@ -56,7 +56,7 @@ func newTracker(t *testing.T, issued string, live ...string) *fakeTracker {
 			}
 			tr.enrolled.Add(1)
 			_ = json.NewEncoder(w).Encode(schema.EnrollResponse{
-				Token: tr.issued, Login: "alice", ServerVersion: version,
+				Token: tr.issued, Login: "alice",
 			})
 		case "/v1/ingest":
 			if bearer == colleagueGitHubToken {

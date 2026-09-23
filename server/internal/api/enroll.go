@@ -77,6 +77,6 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Log.Info("enrolled", "login", login, "hostname", hostname)
 	writeJSON(w, http.StatusOK, schema.EnrollResponse{
-		Token: token, Login: login, ServerVersion: s.Version,
+		Token: token, Login: login,
 	})
 }

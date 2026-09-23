@@ -174,12 +174,11 @@ func (u Usage) TotalTokens() int64 {
 // adapter for, so a harness shows up as "detected, unsupported" instead of
 // silently missing.
 type UnknownSource struct {
-	V         int       `json:"v"`
-	MachineID string    `json:"machine_id"`
-	Path      string    `json:"path"`
-	Hint      string    `json:"hint,omitempty"`
-	SizeBytes int64     `json:"size_bytes"`
-	FirstSeen time.Time `json:"first_seen"`
+	V         int    `json:"v"`
+	MachineID string `json:"machine_id"`
+	Path      string `json:"path"`
+	Hint      string `json:"hint,omitempty"`
+	SizeBytes int64  `json:"size_bytes"`
 
 	// Status separates "no adapter yet" from "investigated, cannot be done",
 	// so a harness already ruled out does not prompt the same investigation
@@ -270,9 +269,8 @@ type EnrollRequest struct {
 // EnrollResponse carries the machine's ingest token. The server keeps only a
 // hash of it, so this reply is the one place it can ever be read.
 type EnrollResponse struct {
-	Token         string `json:"token"`
-	Login         string `json:"login"`
-	ServerVersion string `json:"server_version"`
+	Token string `json:"token"`
+	Login string `json:"login"`
 }
 
 // EnrolledTokenPrefix starts every token enrolment issues: ingest refuses

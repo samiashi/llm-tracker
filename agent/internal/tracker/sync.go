@@ -87,7 +87,7 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 	for _, u := range unknown {
 		unknownDTO = append(unknownDTO, schema.UnknownSource{
 			V: schema.Version, MachineID: machineID, Path: u.Path,
-			Hint: u.Hint, SizeBytes: u.SizeBytes, FirstSeen: u.FirstSeen,
+			Hint: u.Hint, SizeBytes: u.SizeBytes,
 			Status: schema.UnknownStatus(u.Status), Note: u.Note,
 		})
 	}

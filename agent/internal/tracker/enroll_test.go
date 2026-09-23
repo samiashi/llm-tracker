@@ -23,7 +23,7 @@ func TestEnrollReturnsTheTokenTheServerIssued(t *testing.T) {
 			t.Errorf("request: %s %s, %+v", r.URL.Path, r.Header, in)
 		}
 		_ = json.NewEncoder(w).Encode(schema.EnrollResponse{
-			Token: schema.EnrolledTokenPrefix + "issued", Login: "alice", ServerVersion: "v1.4.0",
+			Token: schema.EnrolledTokenPrefix + "issued", Login: "alice",
 		})
 	}))
 	defer srv.Close()

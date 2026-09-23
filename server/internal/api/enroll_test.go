@@ -80,8 +80,7 @@ func TestAnEnrolledTokenUploadsUntilItsOwnerIsRevoked(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(got.Token, schema.EnrolledTokenPrefix) || got.Login != "alice" ||
-		got.ServerVersion != "v1.4.0" {
+	if !strings.HasPrefix(got.Token, schema.EnrolledTokenPrefix) || got.Login != "alice" {
 		t.Fatalf("enroll answered %+v", got)
 	}
 

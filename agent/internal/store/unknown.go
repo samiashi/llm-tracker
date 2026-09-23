@@ -23,7 +23,6 @@ type UnknownRow struct {
 	Path      string
 	Hint      string
 	SizeBytes int64
-	FirstSeen time.Time
 	Status    string
 	Note      string
 }
@@ -31,7 +30,7 @@ type UnknownRow struct {
 // AllUnknown returns every unsupported harness currently detected.
 func (s *Store) AllUnknown(ctx context.Context) ([]UnknownRow, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT path, hint, size_bytes, first_seen, status, note FROM unknown_source`)
+		`SELECT path, hint, size_bytes, status, note FROM unknown_source`)
 	if err != nil {
 		return nil, err
 	}
@@ -39,11 +38,9 @@ func (s *Store) AllUnknown(ctx context.Context) ([]UnknownRow, error) {
 	var out []UnknownRow
 	for rows.Next() {
 		var u UnknownRow
-		var ts int64
-		if err := rows.Scan(&u.Path, &u.Hint, &u.SizeBytes, &ts, &u.Status, &u.Note); err != nil {
+		if err := rows.Scan(&u.Path, &u.Hint, &u.SizeBytes, &u.Status, &u.Note); err != nil {
 			return nil, err
 		}
-		u.FirstSeen = time.Unix(ts, 0).UTC()
 		out = append(out, u)
 	}
 	return out, rows.Err()

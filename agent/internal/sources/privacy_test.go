@@ -42,7 +42,7 @@ var wireKeys = map[reflect.Type][]string{
 	// A harness directory found on the machine, and the finding recorded
 	// against it by us, never by the user.
 	reflect.TypeFor[schema.UnknownSource](): {"v", "machine_id", "path", "hint",
-		"size_bytes", "first_seen", "status", "note"},
+		"size_bytes", "status", "note"},
 	// The email is personal data, carried deliberately so usage can be
 	// attributed to a colleague; it is an address, never content.
 	reflect.TypeFor[schema.Account]():       {"ref", "provider", "email", "plan_type"},
