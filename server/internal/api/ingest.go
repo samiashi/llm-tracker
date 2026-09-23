@@ -123,7 +123,6 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 type ingestBody struct {
 	schema.Batch
 	Events        bounded[schema.Event]         `json:"events"`
-	Quota         bounded[schema.QuotaSample]   `json:"quota"`
 	UnknownSource bounded[schema.UnknownSource] `json:"unknown_sources"`
 	Accounts      bounded[schema.Account]       `json:"accounts"`
 }
@@ -134,7 +133,6 @@ func (in *ingestBody) batch() (schema.Batch, int) {
 	b := in.Batch
 	var rejected int
 	b.Events, rejected = sanitise(in.Events)
-	b.Quota = in.Quota
 	b.UnknownSource = in.UnknownSource
 	b.Accounts = in.Accounts
 	clipStrings(reflect.ValueOf(&b).Elem())

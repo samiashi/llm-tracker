@@ -238,44 +238,6 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 		return nil, err
 	}
 
-	for _, q := range b.Quota {
-		r, err := tx.ExecContext(ctx, `
-			INSERT INTO quota_sample (id, source, ts, machine_id, account_ref, plan_type,
-			  limit_id, limit_name, window_minutes, used_percent, resets_at, is_overage)
-			VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-			-- The agent re-sends an hour whenever its peak rises, so the peak
-			-- is kept rather than the first sample: an hour that ended at 91%
-			-- must not report the 8% it started at.
-			ON CONFLICT(id) DO UPDATE SET
-			  used_percent = MAX(excluded.used_percent, quota_sample.used_percent),
-			  is_overage   = MAX(excluded.is_overage, quota_sample.is_overage),
-			  plan_type    = CASE WHEN quota_sample.plan_type = ''
-			                      THEN excluded.plan_type ELSE quota_sample.plan_type END,
-			  resets_at    = MAX(excluded.resets_at, quota_sample.resets_at),
-			  -- Filled in once and never blanked: an older collector re-sending
-			  -- the hour must not strip the pool a newer one named.
-			  limit_id     = CASE WHEN quota_sample.limit_id = ''
-			                      THEN excluded.limit_id ELSE quota_sample.limit_id END,
-			  limit_name   = CASE WHEN quota_sample.limit_name = ''
-			                      THEN excluded.limit_name ELSE quota_sample.limit_name END
-			-- Every SET above needs an arm here, or it can never fire.
-			WHERE excluded.used_percent > quota_sample.used_percent
-			   OR excluded.is_overage > quota_sample.is_overage
-			   OR excluded.resets_at > quota_sample.resets_at
-			   OR (excluded.plan_type != '' AND quota_sample.plan_type = '')
-			   OR (excluded.limit_id != '' AND quota_sample.limit_id = '')
-			   OR (excluded.limit_name != '' AND quota_sample.limit_name = '')`,
-			q.ID, string(q.Source), q.TS.Unix(), q.MachineID, q.AccountRef, q.PlanType,
-			q.LimitID, q.LimitName,
-			q.WindowMinutes, q.UsedPercent, unixOrZero(q.ResetsAt), boolInt(q.IsOverage))
-		if err != nil {
-			return nil, err
-		}
-		if n, _ := r.RowsAffected(); n > 0 {
-			res.QuotaStored++
-		}
-	}
-
 	if b.UnknownComplete && b.MachineID != "" {
 		// Replace rather than merge: a harness that gained an adapter must
 		// stop being reported as a gap.
@@ -295,7 +257,6 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 			string(us.Status), us.Note); err != nil {
 			return nil, err
 		}
-		res.UnknownStored++
 	}
 
 	return res, tx.Commit()

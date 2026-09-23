@@ -126,16 +126,6 @@ func settingTx(ctx context.Context, tx *sql.Tx, key string) (string, error) {
 	return v, err
 }
 
-// unixOrZero renders a time as a unix timestamp, mapping the zero time to 0:
-// time.Time{}.Unix() is -62135596800, which the dashboard would render as a
-// date in year one.
-func unixOrZero(t time.Time) int64 {
-	if t.IsZero() {
-		return 0
-	}
-	return t.Unix()
-}
-
 // mustDayUnix converts an ISO day to a unix timestamp at UTC midnight,
 // returning 0 for anything unparseable so a bad value deletes nothing.
 func mustDayUnix(day string) int64 {

@@ -304,6 +304,10 @@ func TestEveryListInABatchIsBounded(t *testing.T) {
 			continue
 		}
 		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		// Not read since quota readings were dropped; remove with the field.
+		if name == "quota" {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			var b strings.Builder
 			b.WriteString(`{"v":1,"machine_id":"m","` + name + `":[null`)
@@ -317,6 +321,40 @@ func TestEveryListInABatchIsBounded(t *testing.T) {
 				t.Fatalf("%d elements in %q: status %d, want 413", maxBatchItems+1, name, rec.Code)
 			}
 		})
+	}
+}
+
+// Agents installed before quota readings were dropped still send them, and
+// must keep uploading: the list is ignored, and the ack says exactly what it
+// would without it.
+func TestAnOlderAgentsQuotaReadingsChangeNothing(t *testing.T) {
+	var body map[string]any
+	if err := json.Unmarshal(batchOf(t, event("e", "claude-opus-5", "anthropic:a", 100)), &body); err != nil {
+		t.Fatal(err)
+	}
+	send := func(s *Server) schema.IngestAck {
+		t.Helper()
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ack(t, postIngest(t, s, b, false))
+	}
+	without := send(newServer(t))
+
+	body["quota"] = []map[string]any{{"id": "q", "source": "codex", "machine_id": "m",
+		"account_ref": "openai:a", "used_percent": 91, "window_minutes": 300}}
+	s := newServer(t)
+	if with := send(s); with != without {
+		t.Fatalf("ack %+v with a quota list, %+v without", with, without)
+	}
+	var sum struct {
+		Totals db.Totals `json:"totals"`
+	}
+	getJSON(t, s, "/v1/summary", &sum)
+	if sum.Totals.Events != 1 || sum.Totals.InputTokens != 100 {
+		t.Fatalf("stored %d events, %d input tokens; want the batch's one event of 100",
+			sum.Totals.Events, sum.Totals.InputTokens)
 	}
 }
 

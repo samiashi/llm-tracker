@@ -306,10 +306,10 @@ provision but a disk.
   what it was priced from, which is what makes running beside ingest safe.
   Rolled-up days keep the prices they had: a rollup keeps sums, not the
   dimensions pricing needs.
-- **Forward only in practice.** `00013` and `00016` delete rows their Down
-  cannot restore, and `00016` installs triggers that keep retiring re-keyed
-  rows as agents upgrade, so never plan a rollback that crosses either; roll
-  forward with a new migration. And never edit one that has shipped.
+- **Forward only in practice.** `00013`, `00016` and `00020` delete data
+  their Down cannot restore, and `00016` installs triggers that keep retiring
+  re-keyed rows as agents upgrade, so never plan a rollback that crosses one;
+  roll forward with a new migration. And never edit one that has shipped.
 - **One writer, ever.** SQLite on a volume means exactly one instance. Two
   gives you two divergent databases and no error.
 - **It needs a persistent filesystem and a long-lived process** — the daily
