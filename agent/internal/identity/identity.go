@@ -151,9 +151,9 @@ func claudeAccount(home string) (*schema.Account, error) {
 
 // codexAccount reads the signed-in OpenAI account from ~/.codex/auth.json.
 //
-// The plan type lives in the id_token's claims, so the JWT payload is decoded.
-// The signature is never verified and the token never sent: it only names the
-// account that is logged in.
+// The plan type and user live in the id_token's claims, so the JWT payload is
+// decoded. The signature is never verified and the token never sent: it only
+// names the account that is logged in.
 func codexAccount(home string) (*schema.Account, error) {
 	b, err := readConfig(filepath.Join(home, ".codex", "auth.json"))
 	if b == nil || err != nil {
@@ -182,6 +182,14 @@ func codexAccount(home string) (*schema.Account, error) {
 		if auth, ok := claims["https://api.openai.com/auth"].(map[string]any); ok {
 			if v, ok := auth["chatgpt_plan_type"].(string); ok {
 				acct.PlanType = v
+			}
+			// A ChatGPT workspace's account id is shared by its members, so
+			// alone it names the workspace: the server's account row would
+			// take whichever member uploaded last's email, and everyone's
+			// Codex usage would move onto them. UNVERIFIED on a team
+			// workspace; checked on a personal plan only.
+			if v, ok := auth["chatgpt_user_id"].(string); ok && v != "" {
+				acct.Ref += ":" + v
 			}
 		}
 	}

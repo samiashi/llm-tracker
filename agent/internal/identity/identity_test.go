@@ -154,3 +154,27 @@ func TestTheMachineIDNeverCarriesTheHardwareUUID(t *testing.T) {
 		t.Fatalf("machine id %q: want 32 hex characters derived from, not carrying, the hardware UUID", id)
 	}
 }
+
+// Every member of a ChatGPT workspace shares its account id. Keyed on that
+// alone, their Codex usage lands on one ref, which the server credits to
+// whichever of them uploaded last.
+func TestCodexAccountsInOneWorkspaceStayApart(t *testing.T) {
+	ref := func(claims string) string {
+		t.Helper()
+		dir := home(t, map[string]string{".codex/auth.json": `{"tokens":{"account_id":"ws_1",` +
+			`"id_token":"` + idToken(claims) + `"}}`})
+		a, err := codexAccount(dir)
+		if err != nil || a == nil {
+			t.Fatalf("codexAccount = %+v, %v", a, err)
+		}
+		return a.Ref
+	}
+	alice := ref(`{"email":"alice@example.com","https://api.openai.com/auth":{"chatgpt_user_id":"user-alice"}}`)
+	bob := ref(`{"email":"bob@example.com","https://api.openai.com/auth":{"chatgpt_user_id":"user-bob"}}`)
+	if alice != "openai:ws_1:user-alice" || bob != "openai:ws_1:user-bob" {
+		t.Fatalf("refs %q and %q: want each member's own", alice, bob)
+	}
+	if got := ref(`{"email":"carol@example.com"}`); got != "openai:ws_1" {
+		t.Fatalf("with no user id in the token: %q, want the account id alone", got)
+	}
+}
