@@ -38,15 +38,19 @@ type DB struct {
 
 // Open connects, migrates, and loads the price table.
 func Open(dsn string) (*DB, error) {
-	// SQLite's default page cache is 2MB per connection, under a percent of a
-	// multi-hundred-megabyte archive, and temp_store defaults to FILE, so
-	// every GROUP BY that needs a temp B-tree spills to disk. Negative
-	// cache_size is in KiB rather than pages, so this is 64MB.
+	// Pages are read through one memory map of the whole file, which every
+	// connection shares with the OS cache, rather than copied into a cache
+	// per connection: nine private 64MB caches, which this driver allocates
+	// at twice their size, took one poll past 1.5GB on a 2GB server.
+	// 2147418112 is the largest map the driver takes; negative cache_size is
+	// in KiB.
 	const opts = "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)" +
-		"&_pragma=foreign_keys(1)&_pragma=cache_size(-65536)" +
-		"&_pragma=mmap_size(268435456)&_pragma=temp_store(2)"
+		"&_pragma=foreign_keys(1)&_pragma=cache_size(-16384)" +
+		"&_pragma=mmap_size(2147418112)"
 
-	write, err := sql.Open("sqlite", dsn+opts)
+	// The writer keeps temp storage, its statement journals included, in
+	// memory: on a file, a batch of 2,000 new events took 2.6 times as long.
+	write, err := sql.Open("sqlite", dsn+opts+"&_pragma=temp_store(2)")
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +66,8 @@ func Open(dsn string) (*DB, error) {
 	}
 
 	// Opened after migrations so readers never see a half-migrated schema.
+	// Readers sort to a file, the default: ranking sessions over "All" sorts
+	// every stored event, and in memory that grows with the history.
 	read, err := sql.Open("sqlite", dsn+opts)
 	if err != nil {
 		return nil, err
