@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
+	"github.com/samiashi/llm-tracker/server/internal/auth"
 )
 
 // Verifier says who a GitHub token belongs to and whether they are in the
@@ -20,16 +19,12 @@ type Verifier interface {
 	Member(ctx context.Context, token string) (login string, member bool, err error)
 }
 
-const (
-	// maxEnrollBytes bounds a request that carries one hostname.
-	maxEnrollBytes = 4 << 10
-	// maxEnrolments bounds enrolment attempts across all callers, per minute.
-	// Each one spends the caller's token on GitHub, and GitHub meets a run of
-	// bad credentials by refusing this address for a while, which would take
-	// dashboard logins down with it. A whole team installing at once is well
-	// inside it.
-	maxEnrolments = 30
-)
+// maxEnrollBytes bounds a request that carries one hostname.
+const maxEnrollBytes = 4 << 10
+
+// limiter counts enrolment attempts, each of which spends the caller's token
+// on GitHub, per client address and in all (see auth.Limiter).
+type limiter = auth.Limiter
 
 // handleEnroll trades a GitHub token for an ingest token of the machine's own,
 // if the token's owner is in the org -- the test the dashboard applies. The
@@ -53,7 +48,7 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("malformed request body"))
 		return
 	}
-	if !s.enrolments.allow(time.Now(), maxEnrolments, time.Minute) {
+	if !s.enrolments.Allow(r) {
 		w.Header().Set("Retry-After", "60")
 		writeErr(w, http.StatusTooManyRequests, errors.New("too many enrolments at once; try again in a minute"))
 		return
@@ -88,26 +83,4 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, schema.EnrollResponse{
 		Token: token, Login: login, ServerVersion: s.Version,
 	})
-}
-
-// limiter counts events in fixed windows. Its zero value is ready to use.
-type limiter struct {
-	mu    sync.Mutex
-	start time.Time
-	n     int
-}
-
-// allow reports whether one more event fits in the current window of length
-// per, counting it if so.
-func (l *limiter) allow(now time.Time, limit int, per time.Duration) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if now.Sub(l.start) >= per {
-		l.start, l.n = now, 0
-	}
-	if l.n >= limit {
-		return false
-	}
-	l.n++
-	return true
 }

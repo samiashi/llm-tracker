@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
 )
@@ -42,6 +41,19 @@ func enroll(s *Server, contentType, bearer string) *httptest.ResponseRecorder {
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
+	rec := httptest.NewRecorder()
+	s.Routes(http.NotFoundHandler()).ServeHTTP(rec, req)
+	return rec
+}
+
+// enrollVia is an enrolment from client as it arrives through Caddy, which
+// connects from its own address and names the client in X-Forwarded-For.
+func enrollVia(s *Server, client, bearer string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest("POST", "/v1/enroll", strings.NewReader(`{"hostname":"laptop"}`))
+	req.RemoteAddr = "172.18.0.2:41234"
+	req.Header.Set("X-Forwarded-For", client)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+bearer)
 	rec := httptest.NewRecorder()
 	s.Routes(http.NotFoundHandler()).ServeHTTP(rec, req)
 	return rec
@@ -151,32 +163,41 @@ func TestEnrolmentIsRateLimitedBeforeGitHubIsAsked(t *testing.T) {
 	s := newServer(t)
 	v := &fakeGitHub{}
 	s.Enroll = v
-	for range maxEnrolments {
-		if rec := enroll(s, "application/json", ghToken); rec.Code != http.StatusForbidden {
+	admitted := 0
+	for ; admitted < 100; admitted++ {
+		rec := enroll(s, "application/json", ghToken)
+		if rec.Code == http.StatusTooManyRequests {
+			if rec.Header().Get("Retry-After") == "" {
+				t.Fatal("429 without Retry-After")
+			}
+			break
+		}
+		if rec.Code != http.StatusForbidden {
 			t.Fatalf("status = %d within the limit", rec.Code)
 		}
 	}
-	rec := enroll(s, "application/json", ghToken)
-	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
-		t.Fatalf("status = %d past the limit, want 429 with Retry-After", rec.Code)
+	if admitted == 0 || admitted == 100 {
+		t.Fatalf("%d enrolments from one address before a 429", admitted)
 	}
-	if v.calls != maxEnrolments {
-		t.Fatalf("GitHub asked %d times, want %d", v.calls, maxEnrolments)
+	if v.calls != admitted {
+		t.Fatalf("GitHub asked %d times for %d admitted enrolments", v.calls, admitted)
 	}
 }
 
-func TestLimiterAdmitsTheLimitThenResetsWithTheNextWindow(t *testing.T) {
-	var w limiter
-	t0 := time.Date(2026, 9, 23, 0, 0, 0, 0, time.UTC)
-	for i := range 2 {
-		if !w.allow(t0.Add(time.Duration(i)*time.Second), 2, time.Minute) {
-			t.Fatalf("event %d refused inside the limit", i)
+// Anyone can send an enrolment with any bearer, so one caller's refusals must
+// not use up the budget a colleague enrolling from elsewhere needs.
+func TestOneAddressCannotUseUpEnrolmentForEveryone(t *testing.T) {
+	s := newServer(t)
+	s.Enroll = &fakeGitHub{member: true}
+	for range 100 {
+		if enrollVia(s, "203.0.113.7", "garbage").Code == http.StatusTooManyRequests {
+			break
 		}
 	}
-	if w.allow(t0.Add(59*time.Second), 2, time.Minute) {
-		t.Fatal("a third event fit a window of two")
+	if rec := enrollVia(s, "203.0.113.7", ghToken); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("setup: the flooding address is not limited: %d", rec.Code)
 	}
-	if !w.allow(t0.Add(time.Minute), 2, time.Minute) {
-		t.Fatal("the next window did not start empty")
+	if rec := enrollVia(s, "198.51.100.2", ghToken); rec.Code != http.StatusOK {
+		t.Fatalf("a member from another address: %d %s", rec.Code, rec.Body)
 	}
 }

@@ -395,6 +395,8 @@ fixed order and never cycled, and no chart uses two y-axes.
   timestamp or native cost are implausible. A list added to `schema.Batch`
   must be shadowed in `ingestBody`, with a limit in `listLimit`; a test fails
   until it is.
+- Enrolment and sign-in, the two routes that spend a GitHub call before
+  anyone is known, are rate-limited per client address under a global cap.
 - Never log or transmit an OAuth token. `identity` reads them only to name the
   active account. The one exception is `enroll`, which sends the GitHub CLI's
   token to the tracker, once: only over https (loopback excepted), never on

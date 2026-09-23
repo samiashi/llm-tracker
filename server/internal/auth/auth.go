@@ -47,6 +47,10 @@ type Authenticator struct {
 	secure bool
 	client *http.Client
 	Log    *slog.Logger
+
+	// signIns counts callbacks, each of which spends the client secret and
+	// a code the caller chose on GitHub.
+	signIns Limiter
 }
 
 // MinSessionKeyLen is the shortest key accepted. Anything weaker is
@@ -173,6 +177,12 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Name: stateCookie, Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteLaxMode,
 	})
+	// The state proves nothing about the caller, who can set both halves.
+	if !a.signIns.Allow(r) {
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "too many sign-ins at once; try again in a minute", http.StatusTooManyRequests)
+		return
+	}
 
 	token, err := a.exchange(r.Context(), r.URL.Query().Get("code"))
 	if err != nil {
