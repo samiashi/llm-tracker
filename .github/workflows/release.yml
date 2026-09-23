@@ -60,16 +60,11 @@ jobs:
           cache-dependency-path: |
             agent/go.sum
             server/go.sum
-      # Same pin, version and package list as ci.yml.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.13.2
-          args: ./schema/... ./agent/... ./server/...
-      # Uncached, because Go's test cache ignores TZ; Santiago because its DST
-      # change at midnight is what naive date arithmetic gets wrong.
-      - run: TZ=UTC go test -count=1 ./schema/... ./agent/... ./server/...
-      - run: TZ=America/Santiago go test -count=1 ./schema/... ./agent/... ./server/...
+          version-file: .golangci-lint-version
+          install-only: true
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -77,15 +72,8 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
         working-directory: dashboard
-      - run: npm run lint
-        working-directory: dashboard
-      - run: npm run format:check
-        working-directory: dashboard
-      # Type-checks the server contract fixtures too (tests/contract.test.ts).
-      - run: npx tsc -b
-        working-directory: dashboard
-      - run: npm test
-        working-directory: dashboard
+      # The recipes `make lint` and `make test` run locally, half by half.
+      - run: make lint-go test-go lint-dashboard test-dashboard
 
   # CGO_ENABLED=0 and a pure-Go SQLite driver let darwin cross-compile here;
   # a macOS runner bills at ten times the rate.

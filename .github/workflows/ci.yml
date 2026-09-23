@@ -21,22 +21,14 @@ jobs:
           cache-dependency-path: |
             agent/go.sum
             server/go.sum
-      # Third-party, so pinned to a commit: a tag is mutable.
+      # Third-party, so pinned to a commit: a tag is mutable. Installs the
+      # version .golangci-lint-version names; make runs it, as locally.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.13.2
-          # Listed explicitly: the root has go.work and no go.mod, where a bare
-          # `golangci-lint run` type-checks nothing.
-          args: ./schema/... ./agent/... ./server/...
-      - run: TZ=UTC go test ./schema/... ./agent/... ./server/...
-      # Santiago's DST transition is at midnight, the case naive date
-      # arithmetic gets wrong. -count=1 because Go's test cache ignores TZ and
-      # would replay the UTC run.
-      - run: TZ=America/Santiago go test -count=1 ./schema/... ./agent/... ./server/...
-      # The price generator's own checks: a renamed upstream field must fail
-      # `make prices`, not ship a mispriced table.
-      - run: python3 -m unittest discover -s schema/scripts
+          version-file: .golangci-lint-version
+          install-only: true
+      - run: make lint-go test-go
 
   # The agent is a macOS daemon: cross-compiling it proves it links, not that
   # it runs.
@@ -70,11 +62,6 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
         working-directory: dashboard
-      - run: npm run lint
-        working-directory: dashboard
-      - run: npm run format:check
-        working-directory: dashboard
-      - run: npm test
-        working-directory: dashboard
+      - run: make lint-dashboard test-dashboard
       - run: npm run build
         working-directory: dashboard

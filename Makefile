@@ -11,7 +11,7 @@ GOPKGS   = ./schema/... ./agent/... ./server/...
 # that 404s, with no error at build time.
 .NOTPARALLEL:
 
-.PHONY: all build agent server dashboard image prices test lint fmt clean dev install run-server tools
+.PHONY: all build agent server dashboard image prices test test-go test-dashboard lint lint-go lint-dashboard fmt clean dev install run-server tools
 
 all: build
 
@@ -45,15 +45,24 @@ prices:
 ## Santiago's DST transition is at midnight, the case naive date arithmetic
 ## gets wrong. -count=1 on both, because Go's test cache ignores TZ: either run
 ## could replay a result cached under another zone.
-test:
+test: test-go test-dashboard
+
+# CI and the release workflow run these halves as separate jobs.
+test-go:
 	TZ=UTC $(GO) test -count=1 $(GOPKGS)
 	TZ=America/Santiago $(GO) test -count=1 $(GOPKGS)
 	python3 -m unittest discover -s schema/scripts
+
+test-dashboard:
 	cd dashboard && npm test --silent
 
 ## lint: static analysis for both halves
-lint:
+lint: lint-go lint-dashboard
+
+lint-go:
 	golangci-lint run $(GOPKGS)
+
+lint-dashboard:
 	cd dashboard && npm run lint && npm run format:check && npx tsc -b
 
 ## fmt: apply formatters in place

@@ -224,9 +224,8 @@ git tag v1.4.0 && git push origin v1.4.0
 
 1. **`verify`** checks the tag is exactly `vX.Y.Z`, refuses a tag whose release
    is already published (failing closed on anything but a clear 404), and runs
-   golangci-lint, the Go tests under UTC and `America/Santiago` with
-   `-count=1`, and the dashboard's `npm ci`, lint, `format:check` and tests. It
-   runs neither CI's darwin job nor the generator's Python tests, so tag only a
+   `make lint-go test-go lint-dashboard test-dashboard`, the recipes `make lint`
+   and `make test` run locally. It does not run CI's darwin job, so tag only a
    commit whose CI is green.
 2. **`agent`, `server` and `image`** cross-compile from Linux: `CGO_ENABLED=0`
    and a pure-Go SQLite driver mean no macOS runner, which bills at ten times
