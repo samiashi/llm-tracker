@@ -39,12 +39,15 @@ const share = (part: number, whole: number) => {
 export function MatrixBars({
   cells,
   colOrder,
+  limit,
   max = 6,
   onMore,
 }: {
   cells: MatrixCell[];
   /** Canonical column order for an ordinal dimension; volume order when absent. */
   colOrder?: string[];
+  /** The rows the server was asked for: with that many back, it may have left some out. */
+  limit?: number;
   max?: number;
   /** Shows the hidden rows, making the "+N more" line a button. */
   onMore?: () => void;
@@ -136,8 +139,10 @@ export function MatrixBars({
       widest: Math.max(...rows.map((r) => r.total), 1),
       hidden: hidden.length,
       hiddenTokens: hidden.reduce((sum, [, total]) => sum + total, 0),
+      // As many rows as were asked for: the server may have left some out.
+      truncated: limit !== undefined && ranked.length >= limit,
     };
-  }, [cells, colOrder, max]);
+  }, [cells, colOrder, limit, max]);
 
   if (!model) return <p className="empty">No data in this range.</p>;
 
@@ -201,10 +206,15 @@ export function MatrixBars({
           </li>
         ))}
       </ul>
-      {model.hidden > 0 && (
+      {/* Of the top N only, when that is all the server sent: the rest are not all the rest. */}
+      {model.hidden > 0 ? (
         <More onMore={onMore}>
-          +{model.hidden} more, {tokens(model.hiddenTokens)} combined
+          {model.truncated
+            ? `+${model.hidden} more of the top ${limit}`
+            : `+${model.hidden} more, ${tokens(model.hiddenTokens)} combined`}
         </More>
+      ) : (
+        model.truncated && <More>The {limit} busiest models only; By model lists every one.</More>
       )}
     </>
   );

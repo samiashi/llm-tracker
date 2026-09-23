@@ -141,3 +141,31 @@ describe("MatrixBars", () => {
     expect(title("low")).not.toContain("basis unknown");
   });
 });
+
+describe("MatrixBars rows past the grid", () => {
+  const models = (n: number) =>
+    Array.from({ length: n }, (_, i) => cell(`model-${i + 1}`, "high", 1000 - i));
+
+  // The server sends only the busiest `limit` models, so the rows past the
+  // grid are not all the rest.
+  it("says the hidden rows are of the top N when the server may have left some out", () => {
+    render(<MatrixBars colOrder={ORDER} limit={12} cells={models(12)} />);
+    expect(document.querySelector(".more")?.textContent).toBe("+6 more of the top 12");
+  });
+
+  it("counts the rest outright when the server sent every model", () => {
+    render(<MatrixBars colOrder={ORDER} limit={12} cells={models(8)} />);
+    expect(document.querySelector(".more")?.textContent).toBe("+2 more, 2.0K combined");
+  });
+
+  it("says so when expanded too, where nothing is hidden", () => {
+    render(<MatrixBars colOrder={ORDER} limit={12} max={Infinity} cells={models(12)} />);
+    expect(document.querySelectorAll(".mrow")).toHaveLength(12);
+    expect(document.querySelector(".more")?.textContent).toMatch(/12 busiest models/);
+  });
+
+  it("says nothing more when expanded over every model", () => {
+    render(<MatrixBars colOrder={ORDER} limit={12} max={Infinity} cells={models(8)} />);
+    expect(document.querySelector(".more")).toBeNull();
+  });
+});

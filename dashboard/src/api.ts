@@ -131,6 +131,9 @@ export type AgentRow = {
   events: number;
 };
 
+/** The models the matrix asks for, busiest first: the server sends no more than this. */
+export const MATRIX_ROWS = 12;
+
 /**
  * Generous, because "All" over a large archive is legitimately slow; bounded,
  * because a request that never answers would hold the page on its skeleton.
@@ -236,7 +239,7 @@ export const api = {
   unknown: (s?: AbortSignal) => get<{ unknown: UnknownRow[] }>(`/v1/unknown`, s),
   compare: (f: Filter, s?: AbortSignal) => get<Compare>(`/v1/compare?${qs(f)}`, s),
   matrix: (f: Filter, rows: string, cols: string, s?: AbortSignal) =>
-    get<MatrixResult>(`/v1/matrix?${qs(f, { rows, cols, limit: 12 })}`, s),
+    get<MatrixResult>(`/v1/matrix?${qs(f, { rows, cols, limit: MATRIX_ROWS })}`, s),
   /** CSV download URL for the current filter, used as an href rather than fetched. */
   exportURL: (f: Filter) => `/v1/export.csv?${qs(f)}`,
 };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { api, describeFailure } from "@/api";
+import { api, describeFailure, MATRIX_ROWS } from "@/api";
 import type { Filter, Group } from "@/api";
 import { change, loadDashboard, ratePerMillion } from "@/dashboard";
 import type { Data, RequestName } from "@/dashboard";
@@ -449,6 +449,7 @@ function Dashboard({
             <MatrixBars
               cells={data.modelEffort}
               colOrder={data.modelEffortOrder}
+              limit={MATRIX_ROWS}
               max={v.expanded ? Infinity : undefined}
               onMore={v.open}
             />

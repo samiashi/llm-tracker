@@ -236,6 +236,29 @@ describe("App", () => {
     expect(link.closest("header")).not.toBeNull();
   });
 
+  // The matrix is asked for the twelve busiest models, so six past the grid
+  // are six of those, not every model left.
+  it("says the models past the matrix are of the top twelve", async () => {
+    const cells = Array.from({ length: 12 }, (_, i) => ({
+      row: `model-${i + 1}`,
+      col: "high",
+      tokens: 1000 - i,
+      billed_usd: 0,
+      rate_card_usd: 1,
+      unknown_basis_usd: 0,
+      unpriced_tokens: 0,
+    }));
+    const fetch = mockFetch({ "/v1/matrix": () => ok({ cells, col_order: ["high"] }) });
+    vi.stubGlobal("fetch", fetch);
+    render(<App />);
+    await loaded();
+    const asked = fetch.mock.calls.map(([u]) => urlOf(u)).find((u) => u.includes("/v1/matrix"));
+    expect(asked).toContain("limit=12");
+    expect(card("Reasoning effort by model").querySelector(".more")?.textContent).toBe(
+      "+6 more of the top 12",
+    );
+  });
+
   // A failure counts once per endpoint, however many fields read it: /v1/agents feeds three.
   it.each(["/v1/agents", "/v1/matrix", "/v1/breakdown"])(
     "names each failing endpoint once (%s)",
