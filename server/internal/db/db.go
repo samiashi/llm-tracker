@@ -126,9 +126,9 @@ func settingTx(ctx context.Context, tx *sql.Tx, key string) (string, error) {
 	return v, err
 }
 
-// mustDayUnix converts an ISO day to a unix timestamp at UTC midnight,
+// dayStartUnix converts an ISO day to a unix timestamp at UTC midnight,
 // returning 0 for anything unparseable so a bad value deletes nothing.
-func mustDayUnix(day string) int64 {
+func dayStartUnix(day string) int64 {
 	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
 		return 0

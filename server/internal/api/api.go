@@ -272,7 +272,7 @@ func (s *Server) handleDailyByModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // csvSafe neutralises spreadsheet formula injection. Every text cell comes
-// from whatever a harness wrote, or from anyone holding the ingest token, and
+// from whatever a harness wrote, or from any enrolled machine, and
 // Excel and Sheets execute a cell beginning =, +, - or @ as a formula the
 // moment a colleague opens the file.
 func csvSafe(v string) string {

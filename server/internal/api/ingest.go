@@ -59,11 +59,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, errors.New("invalid token"))
 		return
 	}
-	// A POST with no Content-Type, or a CORS-simple one, needs no preflight,
-	// so any page a developer visits could write into a loopback server.
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		writeErr(w, http.StatusUnsupportedMediaType,
-			errors.New("ingest requires Content-Type: application/json"))
+	if !requireJSON(w, r) {
 		return
 	}
 	select {
@@ -146,6 +142,19 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// requireJSON refuses a body not declared as JSON. A page on another site can
+// POST here without a preflight only with a CORS-simple content type, so this
+// turns it away before it costs anything: a second lock beside the bearer
+// header, which such a request cannot carry.
+func requireJSON(w http.ResponseWriter, r *http.Request) bool {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		return true
+	}
+	writeErr(w, http.StatusUnsupportedMediaType,
+		fmt.Errorf("%s requires Content-Type: application/json", r.URL.Path))
+	return false
+}
+
 // ingestBody is a Batch as it arrives. Each list shadows the embedded one
 // with a bounded type (encoding/json prefers the shallower field), and
 // handleIngest stores only what batch() builds from them. A list added to
@@ -170,9 +179,9 @@ func (in *ingestBody) batch() (schema.Batch, int) {
 	return b, rejected
 }
 
-// sanitise drops events that cannot be true. The token is shared by the
-// fleet, so the realistic source is a colleague's adapter misreading a
-// format, and one bad row makes every total above it wrong, untraceably.
+// sanitise drops events that cannot be true. The realistic source is a
+// colleague's adapter misreading a format, and one bad row makes every total
+// above it wrong, untraceably.
 func sanitise(events []schema.Event) (kept []schema.Event, rejected int) {
 	kept = make([]schema.Event, 0, len(events))
 	// A far-future timestamp sits above every window, and "last seen"

@@ -93,13 +93,13 @@ func (d *DB) Prune(ctx context.Context, before string) (*PruneResult, error) {
 	// Machines that stopped reporting before the window are forgotten, or
 	// the agents table fills with decommissioned laptops. Keyed on last_seen,
 	// so a machine still checking in is kept however quiet it is.
-	m, err := tx.ExecContext(ctx,
+	machines, err := tx.ExecContext(ctx,
 		`DELETE FROM machine WHERE last_seen < ?`,
-		mustDayUnix(before))
+		dayStartUnix(before))
 	if err != nil {
 		return nil, err
 	}
-	res.MachinesPruned, _ = m.RowsAffected()
+	res.MachinesPruned, _ = machines.RowsAffected()
 	// Their unknown sources go with them: only a complete report from the
 	// machine replaces those, and a forgotten machine sends none.
 	if _, err := tx.ExecContext(ctx,
@@ -175,11 +175,11 @@ func (d *DB) Prune(ctx context.Context, before string) (*PruneResult, error) {
 		before); err != nil {
 		return nil, err
 	}
-	d2, err := tx.ExecContext(ctx, `DELETE FROM event WHERE day < ?`, before)
+	deleted, err := tx.ExecContext(ctx, `DELETE FROM event WHERE day < ?`, before)
 	if err != nil {
 		return nil, err
 	}
-	res.EventsPruned, _ = d2.RowsAffected()
+	res.EventsPruned, _ = deleted.RowsAffected()
 
 	if err := raiseFloor(ctx, tx, retentionFloorKey, before); err != nil {
 		return nil, err

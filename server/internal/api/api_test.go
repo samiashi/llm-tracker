@@ -268,8 +268,7 @@ func TestServerVersionIsReportedVerbatimEvenWhenNotARelease(t *testing.T) {
 	}
 }
 
-// Reads are unauthenticated on a loopback deployment: whatever a 500 echoes,
-// any caller sees.
+// Whatever a 500 echoes, every signed-in colleague sees.
 func TestInternalErrorsSayNothingUseful(t *testing.T) {
 	s := newServer(t)
 	s.DB.Close() // every query now fails inside the driver

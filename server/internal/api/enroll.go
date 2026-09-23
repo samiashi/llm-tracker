@@ -31,11 +31,7 @@ type limiter = auth.Limiter
 // GitHub token is spent on that check and neither kept nor logged; the one
 // issued is kept only as a hash, and `-revoke` withdraws it.
 func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
-	// As for ingest: a request a page could send without a preflight is
-	// refused before it costs anything.
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		writeErr(w, http.StatusUnsupportedMediaType,
-			errors.New("enroll requires Content-Type: application/json"))
+	if !requireJSON(w, r) {
 		return
 	}
 	ghToken, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
