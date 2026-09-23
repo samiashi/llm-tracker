@@ -132,17 +132,22 @@ func TestNoOtherSpellingOfAnExemptRouteServesThePage(t *testing.T) {
 	}
 }
 
-// There is no mode without GitHub auth, so the server names every setting it
-// is missing instead of starting.
-func TestTheServerNamesEveryMissingAuthSetting(t *testing.T) {
-	for _, k := range []string{"LLM_TRACKER_GITHUB_CLIENT_ID", "LLM_TRACKER_GITHUB_CLIENT_SECRET",
-		"LLM_TRACKER_GITHUB_ORG", "LLM_TRACKER_BASE_URL", "LLM_TRACKER_SESSION_KEY"} {
+// clearAuth unsets every GitHub auth setting for the test.
+func clearAuth(t *testing.T) {
+	t.Helper()
+	for _, k := range authSettings {
 		t.Setenv(k, "")
 	}
+}
+
+// Some settings but not all is a deployment short of one, never local
+// development: the server names every one that is missing instead of starting.
+func TestAHalfConfiguredServerNamesWhatIsMissing(t *testing.T) {
+	clearAuth(t)
 	t.Setenv("LLM_TRACKER_GITHUB_ORG", "your-org")
-	_, err := authConfig()
+	_, err := dashboardGate("127.0.0.1:8790", slog.New(slog.DiscardHandler))
 	if err == nil {
-		t.Fatal("authConfig accepted an environment with no GitHub auth")
+		t.Fatal("a server with only the org set started, on loopback")
 	}
 	for _, k := range []string{"CLIENT_ID", "CLIENT_SECRET", "BASE_URL", "SESSION_KEY"} {
 		if !strings.Contains(err.Error(), k) {
@@ -151,6 +156,78 @@ func TestTheServerNamesEveryMissingAuthSetting(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "GITHUB_ORG") {
 		t.Errorf("%v names the org, which is set", err)
+	}
+}
+
+// With no GitHub app, a server serves only this machine: it starts on a
+// loopback address, and refuses any address another machine could reach.
+func TestWithNoGitHubAppOnlyALoopbackServerStarts(t *testing.T) {
+	clearAuth(t)
+	for _, tc := range []struct {
+		addr   string
+		starts bool
+	}{
+		{"127.0.0.1:8790", true},
+		{"localhost:8790", true},
+		{"[::1]:8790", true},
+		{"0.0.0.0:8790", false},
+		{":8790", false},
+		{"192.168.1.20:8790", false},
+	} {
+		g, err := dashboardGate(tc.addr, slog.New(slog.DiscardHandler))
+		if started := err == nil; started != tc.starts {
+			t.Errorf("%s: started %v (err %v), want %v", tc.addr, started, err, tc.starts)
+		}
+		if err == nil {
+			if _, ok := g.(*auth.Local); !ok {
+				t.Errorf("%s: gate %T, want the local one", tc.addr, g)
+			}
+		}
+	}
+}
+
+// Locally the dashboard needs no sign-in, but only for a request addressed to
+// this machine by name: a page elsewhere that rebinds its hostname to
+// 127.0.0.1 gets nothing. Uploads still need an enrolled token.
+func TestALocalServerServesOnlyRequestsAddressedToThisMachine(t *testing.T) {
+	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	g := auth.NewLocal()
+	srv := &api.Server{DB: d, Log: slog.New(slog.DiscardHandler), Version: "v1.0.0", Enroll: g}
+	h := newHandler(srv, g, web.NewHandler(fstest.MapFS{
+		"index.html": {Data: []byte("<!doctype html><title>dashboard</title>")},
+	}))
+
+	get := func(host, target string) int {
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for _, host := range []string{"127.0.0.1:8790", "localhost:5178", "[::1]:8790"} {
+		for _, target := range []string{"/", "/v1/summary"} {
+			if code := get(host, target); code != http.StatusOK {
+				t.Errorf("%s%s: %d, want 200 with no sign-in", host, target, code)
+			}
+		}
+	}
+	for _, host := range []string{"evil.example", "evil.example:8790", "127.0.0.1.evil.example"} {
+		if code := get(host, "/v1/summary"); code != http.StatusMisdirectedRequest {
+			t.Errorf("Host %s: %d, want 421", host, code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingest", strings.NewReader(`{"v":1,"machine_id":"m"}`))
+	req.Host = "127.0.0.1:8790"
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("an upload with no token: %d, want 401", rec.Code)
 	}
 }
 

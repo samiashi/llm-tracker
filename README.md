@@ -130,15 +130,17 @@ make test         # Go under two time zones, the price generator, the dashboard
 make lint         # must be clean
 ```
 
-To run it locally, create a GitHub OAuth app of your own with the callback
-`http://127.0.0.1:8790/auth/callback`:
+To run it locally:
 
 ```bash
-cp .env.example .env                  # fill in the app's keys and a session key
-make run-server                       # http://127.0.0.1:8790
-cd dashboard && npm run dev           # http://127.0.0.1:5178, after signing in on :8790
+make run-server                       # http://127.0.0.1:8790, this machine only, no sign-in
+cd dashboard && npm run dev           # http://127.0.0.1:5178
 ./bin/llm-tracker-agent enroll -server http://127.0.0.1:8790
 ```
+
+To try GitHub sign-in locally, create an OAuth app of your own with the
+callback `http://127.0.0.1:8790/auth/callback` and fill in `.env` from
+`.env.example`.
 
 [AGENTS.md](AGENTS.md) holds the invariants: the rules that, broken, produce
 wrong numbers rather than errors. Read it before changing the adapters, the

@@ -79,9 +79,11 @@ tools:
 	@command -v golangci-lint >/dev/null || { echo "install golangci-lint: brew install golangci-lint"; exit 1; }
 	cd dashboard && npm ci --silent
 
-# The server takes its GitHub auth settings from .env (see .env.example).
+# Without .env the server is local development: loopback only, no sign-in.
+# .env (see .env.example) turns on GitHub sign-in.
 run-server:
-	set -a && . ./.env && set +a && cd server && $(GO) run . -v -db ../llm-tracker.db
+	if [ -f .env ]; then set -a && . ./.env && set +a; fi && \
+		cd server && $(GO) run . -v -db ../llm-tracker.db
 
 # Keeps dist/.gitkeep, which //go:embed needs to compile. -exec rm, not
 # -delete: -delete implies -depth on BSD find, and the ! -name guard then fails

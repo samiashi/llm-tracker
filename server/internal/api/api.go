@@ -21,8 +21,8 @@ type Server struct {
 	// Version is this build's release tag: returned on every ingest so an
 	// agent can tell it is behind, and to the dashboard as the upgrade target.
 	Version string
-	// Enroll checks org membership for enrolment, which is how every machine
-	// gets its ingest token.
+	// Enroll decides who may enrol, which is how every machine gets its
+	// ingest token.
 	Enroll Verifier
 
 	enrolments limiter

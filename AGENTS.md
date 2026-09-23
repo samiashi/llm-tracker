@@ -340,12 +340,16 @@ the data disk is mounted: `/mnt/disks` is tmpfs there, and a server started on
 the empty directory would take uploads into memory and lose them, while the
 agents mark them sent.
 
-GitHub auth is not optional, locally included: the server does not start
-without all of `LLM_TRACKER_GITHUB_{CLIENT_ID,CLIENT_SECRET,ORG}`,
-`LLM_TRACKER_BASE_URL` and a `LLM_TRACKER_SESSION_KEY` of at least 32
-bytes, and it names every one that is missing. Development uses an OAuth app of
-its own. Keep it to one way of running: no unauthenticated mode, no shared
-token, no overrides.
+The server has two gates, chosen by its settings. With all of
+`LLM_TRACKER_GITHUB_{CLIENT_ID,CLIENT_SECRET,ORG}`, `LLM_TRACKER_BASE_URL`
+and a `LLM_TRACKER_SESSION_KEY` of at least 32 bytes, the dashboard needs a
+GitHub session from a member of the org. With none of them it is local
+development, and must listen on loopback: no sign-in, a request served only
+when its Host names this machine (a page elsewhere can rebind its hostname to
+127.0.0.1), and enrolment open to whoever GitHub names. Anything between —
+some settings, or none on an address other machines can reach — refuses to
+start and names what is missing, so a deployment short of one secret never
+serves an open dashboard. There is no shared token and no other mode.
 
 Retention is off by default. Pruning rolls each day up before deleting its
 events, and a rolled-up day never returns to per-event detail: turning pruning
@@ -391,7 +395,8 @@ fixed order and never cycled, and no chart uses two y-axes.
 ## Security
 
 - Everything but `/healthz`, the OAuth flow, ingest and enrolment needs a
-  GitHub session from a member of the org, the page and its scripts included.
+  GitHub session from a member of the org, the page and its scripts included
+  — or, on a local server, a request addressed to loopback (see Deploying).
 - Ingest takes only tokens enrolment issued. `POST /v1/enroll` trades a GitHub
   token for one, after the org check the dashboard makes; the server keeps only
   a SHA-256 of it.

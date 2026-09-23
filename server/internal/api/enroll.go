@@ -12,9 +12,9 @@ import (
 	"github.com/samiashi/llm-tracker/server/internal/auth"
 )
 
-// Verifier says who a GitHub token belongs to and whether they are in the
-// org, with an empty login when GitHub rejects the token. auth.Authenticator
-// is the one main passes.
+// Verifier says who a GitHub token belongs to and whether they may enrol, with
+// an empty login when GitHub rejects the token: auth.Authenticator admits the
+// org's members, auth.Local, on a loopback server, whoever GitHub names.
 type Verifier interface {
 	Member(ctx context.Context, token string) (login string, member bool, err error)
 }

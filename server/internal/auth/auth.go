@@ -1,6 +1,6 @@
 // Package auth gates the dashboard behind GitHub org membership. The org
 // already lists who is on the team, so there is no second list to maintain
-// and nobody to deprovision twice.
+// and nobody to deprovision twice. Local is the gate for local development.
 package auth
 
 import (
@@ -188,7 +188,7 @@ func (a *Authenticator) handleCallback(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, "oauth exchange failed", err, http.StatusBadGateway)
 		return
 	}
-	user, err := a.fetchUser(r.Context(), token)
+	user, err := fetchUser(r.Context(), a.client, token)
 	if err != nil {
 		a.fail(w, "cannot read GitHub user", err, http.StatusBadGateway)
 		return
@@ -289,7 +289,7 @@ func (a *Authenticator) exchange(ctx context.Context, code string) (string, erro
 // machine proves who they are, so nobody has to hand them a secret. The token
 // is used for these two reads and is neither kept nor logged.
 func (a *Authenticator) Member(ctx context.Context, token string) (login string, member bool, err error) {
-	u, err := a.fetchUser(ctx, token)
+	u, err := fetchUser(ctx, a.client, token)
 	if errors.Is(err, errRejected) {
 		return "", false, nil
 	}
@@ -303,9 +303,10 @@ func (a *Authenticator) Member(ctx context.Context, token string) (login string,
 // errRejected is GitHub refusing the token outright.
 var errRejected = errors.New("github rejected the token")
 
-func (a *Authenticator) fetchUser(ctx context.Context, token string) (User, error) {
+// fetchUser names the GitHub user a token belongs to.
+func fetchUser(ctx context.Context, client *http.Client, token string) (User, error) {
 	var u User
-	err := a.get(ctx, token, "https://api.github.com/user", &u)
+	err := getJSON(ctx, client, token, "https://api.github.com/user", &u)
 	if err == nil && u.Login == "" {
 		err = errors.New("github returned a user with no login")
 	}
@@ -340,14 +341,14 @@ func (a *Authenticator) isOrgMember(ctx context.Context, token, login string) (b
 	}
 }
 
-func (a *Authenticator) get(ctx context.Context, token, url string, out any) error {
+func getJSON(ctx context.Context, client *http.Client, token, url string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := a.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

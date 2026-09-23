@@ -73,20 +73,12 @@ func run() int {
 		return 0
 	}
 
-	// GitHub auth is what gates the dashboard and what every agent enrols
-	// through, so there is no mode without it.
-	cfg, err := authConfig()
+	g, err := dashboardGate(*addr, log)
 	if err != nil {
 		log.Error("refusing to start", "err", err)
 		return 1
 	}
-	authn, err := auth.New(cfg)
-	if err != nil {
-		log.Error("refusing to start", "err", err)
-		return 1
-	}
-	authn.Log = log
-	srv := &api.Server{DB: database, Log: log, Version: version, Enroll: authn}
+	srv := &api.Server{DB: database, Log: log, Version: version, Enroll: g}
 
 	// Cancelled on shutdown, so a scheduled prune in flight stops rather than
 	// writing into a database the process is about to close.
@@ -106,7 +98,7 @@ func run() int {
 
 	httpSrv := &http.Server{
 		Addr:    *addr,
-		Handler: newHandler(srv, authn, web.Handler()),
+		Handler: newHandler(srv, g, web.Handler()),
 		// Every phase is bounded, or a client dripping its body or holding a
 		// keep-alive open keeps a goroutine and a socket as long as it likes.
 		// Read and write are generous: a first-run backfill batch and a full
@@ -150,37 +142,72 @@ func run() int {
 	return 0
 }
 
-// authConfig reads GitHub auth's settings from the environment, naming every
-// one that is missing rather than the first.
-func authConfig() (auth.Config, error) {
-	var missing []string
-	need := func(key string) string {
-		v := os.Getenv(key)
-		if v == "" {
-			missing = append(missing, key)
+// gate stands in front of the dashboard and decides who may enrol: GitHub
+// sign-in for the org's members, or on a loopback server with no GitHub app,
+// only this machine.
+type gate interface {
+	api.Verifier
+	Routes(*http.ServeMux)
+	Middleware(http.Handler) http.Handler
+}
+
+// dashboardGate picks the gate from the environment. With every GitHub
+// setting, the dashboard is gated on the org. With none, on a loopback
+// address, the server is local development: this machine only, no sign-in.
+// Anything between is refused, naming what is missing, so a deployment short
+// of one secret never serves an open dashboard.
+func dashboardGate(addr string, log *slog.Logger) (gate, error) {
+	cfg, missing := authConfig()
+	switch {
+	case len(missing) == 0:
+		a, err := auth.New(cfg)
+		if err != nil {
+			return nil, err
 		}
-		return v
+		a.Log = log
+		return a, nil
+	case len(missing) < len(authSettings):
+		return nil, fmt.Errorf("set %s (.env.example says what each is)", strings.Join(missing, ", "))
+	case !auth.IsLoopback(addr):
+		return nil, fmt.Errorf("%s can be reached from other machines: set %s for GitHub "+
+			"sign-in, or listen on 127.0.0.1 for local development", addr, strings.Join(missing, ", "))
 	}
-	cfg := auth.Config{
-		ClientID:     need("LLM_TRACKER_GITHUB_CLIENT_ID"),
-		ClientSecret: need("LLM_TRACKER_GITHUB_CLIENT_SECRET"),
-		Org:          need("LLM_TRACKER_GITHUB_ORG"),
-		BaseURL:      need("LLM_TRACKER_BASE_URL"),
-		SessionKey:   []byte(need("LLM_TRACKER_SESSION_KEY")),
+	log.Warn("no GitHub app configured: serving this machine only, without sign-in", "addr", addr)
+	return auth.NewLocal(), nil
+}
+
+// authSettings are GitHub auth's settings, all of which gate the dashboard on
+// the org, in the order an error names them.
+var authSettings = []string{
+	"LLM_TRACKER_GITHUB_CLIENT_ID", "LLM_TRACKER_GITHUB_CLIENT_SECRET",
+	"LLM_TRACKER_GITHUB_ORG", "LLM_TRACKER_BASE_URL", "LLM_TRACKER_SESSION_KEY",
+}
+
+// authConfig reads GitHub auth's settings from the environment, and names
+// every one that is missing rather than the first.
+func authConfig() (auth.Config, []string) {
+	var missing []string
+	for _, k := range authSettings {
+		if os.Getenv(k) == "" {
+			missing = append(missing, k)
+		}
 	}
-	if len(missing) > 0 {
-		return cfg, fmt.Errorf("set %s (.env.example says what each is)", strings.Join(missing, ", "))
-	}
-	return cfg, nil
+	return auth.Config{
+		ClientID:     os.Getenv("LLM_TRACKER_GITHUB_CLIENT_ID"),
+		ClientSecret: os.Getenv("LLM_TRACKER_GITHUB_CLIENT_SECRET"),
+		Org:          os.Getenv("LLM_TRACKER_GITHUB_ORG"),
+		BaseURL:      os.Getenv("LLM_TRACKER_BASE_URL"),
+		SessionKey:   []byte(os.Getenv("LLM_TRACKER_SESSION_KEY")),
+	}, missing
 }
 
 // newHandler assembles the request chain. The security headers wrap
-// everything, so /auth and the middleware's own refusals carry them too.
-func newHandler(srv *api.Server, authn *auth.Authenticator, spa http.Handler) http.Handler {
+// everything, so /auth and the gate's own refusals carry them too.
+func newHandler(srv *api.Server, g gate, spa http.Handler) http.Handler {
 	mux := http.NewServeMux()
-	authn.Routes(mux)
+	g.Routes(mux)
 	mux.Handle("/", srv.Routes(spa))
-	return api.WithSecurityHeaders(api.WithGzip(authn.Middleware(mux)))
+	return api.WithSecurityHeaders(api.WithGzip(g.Middleware(mux)))
 }
 
 // probe asks a server already running in this container whether it is serving.
