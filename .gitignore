@@ -1,0 +1,22 @@
+bin/
+node_modules/
+
+# TypeScript incremental build cache.
+*.tsbuildinfo
+
+# Byte-compiled output from the price generator.
+__pycache__/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+# The built dashboard is ignored, but the directory is not: web.go embeds it,
+# and an embed pattern that matches nothing is a compile error, so a fresh
+# clone needs the placeholder to build the server.
+server/internal/web/dist/*
+!server/internal/web/dist/.gitkeep
+
+# Every env file, except the committed template, which holds no secrets.
+.env
+.env.*
+!.env.example
