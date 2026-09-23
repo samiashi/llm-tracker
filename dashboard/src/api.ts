@@ -23,11 +23,16 @@ export type Totals = {
 export type Group = { key: string; totals: Totals };
 export type Daily = { day: string; totals: Totals };
 
-/** `history_*_day` are UTC days, like every day the server returns. */
+/**
+ * `history_*_day` are UTC days, like every day the server returns. Under a
+ * person filter, `history_first_day` is that person's first recorded day.
+ */
 export type Summary = {
   totals: Totals;
   history_first_day: string;
   history_last_day: string;
+  /** The server's version as a release, "X.Y.Z", or "" for a build that is not one. */
+  server_release: string;
 };
 
 export type SourceHealth = {
@@ -116,6 +121,8 @@ export type AgentRow = {
   hostname: string;
   person: string;
   agent_version: string;
+  /** agent_version as a release, "X.Y.Z", or "" for a build that is not one. */
+  release: string;
   last_sync: number;
   events: number;
 };

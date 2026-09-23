@@ -28,49 +28,48 @@ export function agentHealth(
 }
 
 /**
- * The agent version most of the fleet runs: the upgrade target when the
- * server's own version is not a release. "Differs from the rest" is a fact,
- * where ordering `git describe` output would be a guess.
+ * A build's version string and the release the server read it as: "X.Y.Z",
+ * or "" for a working-tree build ("6387414-dirty", "dev"), which cannot be
+ * installed. The server owns that grammar; the page only compares its answers.
  */
-export function fleetVersion(versions: string[]): string {
-  const counts = new Map<string, number>();
+export type Version = { version: string; release: string };
+
+/**
+ * The version most of the fleet runs: the upgrade target when the server's
+ * own build is not a release. "Differs from the rest" is a fact, where
+ * ordering `git describe` output would be a guess.
+ */
+export function fleetVersion(versions: Version[]): Version {
+  const counts = new Map<string, { v: Version; n: number }>();
   for (const v of versions) {
-    if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+    if (!v.version) continue;
+    const seen = counts.get(v.version);
+    if (seen) seen.n++;
+    else counts.set(v.version, { v, n: 1 });
   }
-  let best = "";
-  let bestN = 0;
-  for (const [v, n] of counts) {
-    if (n > bestN) [best, bestN] = [v, n];
-  }
-  return best;
+  let best: { v: Version; n: number } = { v: { version: "", release: "" }, n: 0 };
+  for (const c of counts.values()) if (c.n > best.n) best = c;
+  return best.v;
 }
 
 /**
- * An agent's version against the release it should run. Semver is compared
- * numerically where both sides are tags; otherwise the answer is "differs",
- * never a guess at which came first.
+ * An agent's version against the release it should run: compared as
+ * releases where both are one, and otherwise "differs", never a guess at
+ * which came first.
  */
-export function versionState(agent: string, target: string): "ok" | "behind" | "differs" {
-  if (!agent || !target || agent === target) return "ok";
-  const a = semver(agent);
-  const b = semver(target);
-  if (!a || !b) return "differs";
-  for (let i = 0; i < 3; i++) {
-    if (a[i] !== b[i]) return a[i] < b[i] ? "behind" : "ok";
+export function versionState(agent: Version, target: Version): "ok" | "behind" | "differs" {
+  if (!agent.version || !target.version || agent.version === target.version) return "ok";
+  if (!agent.release || !target.release) return "differs";
+  return compareReleases(agent.release, target.release) < 0 ? "behind" : "ok";
+}
+
+/** Two "X.Y.Z" releases, part by part as numbers: as text, 1.10.0 sorts before 1.9.0. */
+function compareReleases(a: string, b: string): number {
+  const x = a.split(".").map(Number);
+  const y = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d;
   }
-  return "ok";
-}
-
-/** [major, minor, patch] for a plain vX.Y.Z tag, or null for anything else. */
-function semver(v: string): [number, number, number] | null {
-  const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(v.trim());
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
-}
-
-/**
- * Whether an agent could be told to upgrade *to* this version. Only a release
- * tag qualifies: a working-tree build ("6387414-dirty", "dev") cannot be installed.
- */
-export function isRelease(v: string): boolean {
-  return semver(v) !== null;
+  return 0;
 }

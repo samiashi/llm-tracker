@@ -1,6 +1,7 @@
 import type { AgentRow, SessionRow, SourceHealth, UnknownRow } from "@/api";
 import { More } from "@/components/Card";
-import { agentHealth, fleetVersion, isRelease, versionState } from "@/fleet";
+import { agentHealth, fleetVersion, versionState } from "@/fleet";
+import type { Version } from "@/fleet";
 import { ago, bytes, exact, tokens, usd } from "@/format";
 
 export function SessionsTable({
@@ -102,21 +103,22 @@ export function HealthTable({ sources, now }: { sources: SourceHealth[]; now: nu
   );
 }
 
+const versionOf = (a: AgentRow): Version => ({ version: a.agent_version, release: a.release });
+
 export function AgentsTable({
   agents,
   now,
-  serverVersion,
+  server,
 }: {
   agents: AgentRow[];
   now: number;
-  serverVersion: string;
+  server: Version;
 }) {
-  // Both halves ship from one tag, so the server's version is the upgrade
+  // Both halves ship from one tag, so the server's release is the upgrade
   // target. A working-tree build is not installable: the fleet's most common
   // version stands in, which flags the odd machine out.
-  const serverIsRelease = isRelease(serverVersion);
-  const target = serverIsRelease ? serverVersion : fleetVersion(agents.map((a) => a.agent_version));
-  const targetLabel = serverIsRelease ? "The server" : "Most of the fleet";
+  const target = server.release ? server : fleetVersion(agents.map(versionOf));
+  const targetLabel = server.release ? "The server" : "Most of the fleet";
   return (
     <div className="scroll">
       <table>
@@ -132,7 +134,7 @@ export function AgentsTable({
         <tbody>
           {agents.map((a) => {
             const health = agentHealth(a.last_sync, now);
-            const state = versionState(a.agent_version, target);
+            const state = versionState(versionOf(a), target);
             return (
               <tr key={a.machine_id}>
                 <td>
@@ -152,8 +154,8 @@ export function AgentsTable({
                       className="tag todo"
                       title={
                         state === "behind"
-                          ? `${targetLabel} is on ${target}; this agent collects with an older adapter set`
-                          : `${targetLabel} is on ${target}; this agent is on something else, and which is newer cannot be determined`
+                          ? `${targetLabel} is on ${target.version}; this agent collects with an older adapter set`
+                          : `${targetLabel} is on ${target.version}; this agent is on something else, and which is newer cannot be determined`
                       }
                     >
                       {state}

@@ -1,4 +1,5 @@
 import { api, UnauthorizedError } from "@/api";
+import type { Version } from "@/fleet";
 import type {
   AgentRow,
   Compare,
@@ -97,8 +98,8 @@ export type Data = {
   health: SourceHealth[];
   unknown: UnknownRow[];
   agents: AgentRow[];
-  /** The release the team should be on: both halves ship from one tag. */
-  serverVersion: string;
+  /** The build the team should be on: both halves ship from one tag. */
+  server: Version;
   /** The server's clock, in unix seconds, so an unsynced browser cannot age every row. */
   agentsNow: number;
 };
@@ -174,7 +175,7 @@ export async function loadDashboard(filter: Filter, signal: AbortSignal): Promis
     health: valueOr(r.health, { sources: [] }).sources,
     unknown: valueOr(r.unknown, { unknown: [] }).unknown,
     agents: agents.agents,
-    serverVersion: agents.server_version,
+    server: { version: agents.server_version, release: summary.server_release },
     agentsNow: agents.now || Math.floor(Date.now() / 1000),
     origins: valueOr(r["breakdown:origin"], empty).groups,
     modelEffort: matrix.cells,

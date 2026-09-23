@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from "vitest";
-import { agentHealth, fleetVersion, isRelease, versionState } from "@/fleet";
+import { agentHealth, fleetVersion, versionState } from "@/fleet";
+import type { Version } from "@/fleet";
 import {
   ago,
   bytes,
@@ -105,58 +106,58 @@ describe("ago", () => {
   });
 });
 
+/** A build as the server reports it; `release` is "" for anything that is not one. */
+const build = (version: string, release = version.replace(/^v/, "")): Version => ({
+  version,
+  release,
+});
+const dirty = (version: string): Version => ({ version, release: "" });
+
 describe("fleetVersion", () => {
   it("picks the version most machines are on", () => {
-    expect(fleetVersion(["v1.2.0", "v1.2.0", "v1.1.0"])).toBe("v1.2.0");
+    expect(fleetVersion([build("v1.2.0"), build("v1.2.0"), build("v1.1.0")])).toEqual(
+      build("v1.2.0"),
+    );
   });
 
   // A machine that has never pushed has no version yet. Letting "" win would
   // mark every real agent as the odd one out.
   it("ignores machines with no version reported", () => {
-    expect(fleetVersion(["", "", "v1.2.0"])).toBe("v1.2.0");
-    expect(fleetVersion([])).toBe("");
+    expect(fleetVersion([dirty(""), dirty(""), build("v1.2.0")]).version).toBe("v1.2.0");
+    expect(fleetVersion([]).version).toBe("");
   });
 });
 
 describe("versionState", () => {
-  it("compares release tags numerically, not as strings", () => {
-    // "v1.10.0" sorts before "v1.9.0" as text, which would report the newer
+  it("compares releases numerically, not as strings", () => {
+    // "1.10.0" sorts before "1.9.0" as text, which would report the newer
     // agent as the stale one.
-    expect(versionState("v1.9.0", "v1.10.0")).toBe("behind");
-    expect(versionState("v1.10.0", "v1.9.0")).toBe("ok");
-    expect(versionState("v1.2.3", "v1.2.3")).toBe("ok");
-    expect(versionState("v1.2.3", "v2.0.0")).toBe("behind");
+    expect(versionState(build("v1.9.0"), build("v1.10.0"))).toBe("behind");
+    expect(versionState(build("v1.10.0"), build("v1.9.0"))).toBe("ok");
+    expect(versionState(build("v1.2.3"), build("v1.2.3"))).toBe("ok");
+    expect(versionState(build("v1.2.3"), build("v2.0.0"))).toBe("behind");
+  });
+
+  // The server reads "v1.4.0" and "1.4.0" as one release.
+  it("treats two spellings of one release as the same release", () => {
+    expect(versionState(build("1.4.0"), build("v1.4.0"))).toBe("ok");
   });
 
   // An agent ahead of the server is odd but not a problem to chase: it still
   // collects at least as much as the server expects.
   it("does not flag an agent ahead of the server", () => {
-    expect(versionState("v2.0.0", "v1.9.9")).toBe("ok");
+    expect(versionState(build("v2.0.0"), build("v1.9.9"))).toBe("ok");
   });
 
-  it("says differs rather than guessing at non-semver builds", () => {
-    expect(versionState("c7707a3-dirty", "v1.2.0")).toBe("differs");
-    expect(versionState("v1.2.0", "c7707a3-dirty")).toBe("differs");
+  it("says differs rather than guessing at a build that is not a release", () => {
+    expect(versionState(dirty("c7707a3-dirty"), build("v1.2.0"))).toBe("differs");
+    expect(versionState(build("v1.2.0"), dirty("c7707a3-dirty"))).toBe("differs");
   });
 
   // A machine that has never pushed has no version yet; marking it is noise.
   it("stays quiet when either side is unknown", () => {
-    expect(versionState("", "v1.2.0")).toBe("ok");
-    expect(versionState("v1.2.0", "")).toBe("ok");
-  });
-});
-
-describe("isRelease", () => {
-  it("accepts release tags", () => {
-    expect(isRelease("v1.4.0")).toBe(true);
-    expect(isRelease("1.4.0")).toBe(true);
-  });
-
-  it("rejects anything git describe produced", () => {
-    expect(isRelease("dev")).toBe(false);
-    expect(isRelease("6387414-dirty")).toBe(false);
-    expect(isRelease("v1.4.0-2-gabc123")).toBe(false);
-    expect(isRelease("")).toBe(false);
+    expect(versionState(dirty(""), build("v1.2.0"))).toBe("ok");
+    expect(versionState(build("v1.2.0"), dirty(""))).toBe("ok");
   });
 });
 

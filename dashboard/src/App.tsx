@@ -509,11 +509,7 @@ function Dashboard({
             failed={down.has("agents")}
             note="Every machine running the collector. Last sync is a heartbeat, not when anyone worked: if it is old, that machine's usage is missing from the totals."
           >
-            <AgentsTable
-              agents={data.agents}
-              now={data.agentsNow}
-              serverVersion={data.serverVersion}
-            />
+            <AgentsTable agents={data.agents} now={data.agentsNow} server={data.server} />
           </Card>
         </div>
       )}

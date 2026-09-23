@@ -60,7 +60,12 @@ function mockFetch(over: Record<string, Reply> = {}) {
     for (const [part, reply] of Object.entries(over)) if (url.includes(part)) return reply(url);
 
     if (url.includes("/v1/summary"))
-      return ok({ totals, history_first_day: "2026-09-01", history_last_day: "2026-09-22" });
+      return ok({
+        totals,
+        history_first_day: "2026-09-01",
+        history_last_day: "2026-09-22",
+        server_release: "",
+      });
     if (url.includes("/v1/compare"))
       return ok({
         previous: totals,
@@ -98,6 +103,7 @@ function mockFetch(over: Record<string, Reply> = {}) {
             hostname: "mac",
             person: "a@b.c",
             agent_version: "v1.0.0",
+            release: "1.0.0",
             last_sync: 1,
             events: 3,
           },
