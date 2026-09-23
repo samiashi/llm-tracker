@@ -173,11 +173,18 @@ func codexTokenCountID(total *codexTokenUsage, last codexTokenUsage, path string
 func (a Codex) Collect(ctx context.Context, c *Ctx) (Result, error) {
 	ctxs := map[string]*fileCtx{}
 
-	return walkJSONL(ctx, c, AbsRoots(a, c), hasExt(".jsonl"), func(path string, _ int64, line []byte) {
+	return walkJSONL(ctx, c, AbsRoots(a, c), hasExt(".jsonl"), func(path string, at int64, line []byte) {
 		fc, ok := ctxs[path]
 		if !ok {
 			v := loadFileCtx(ctx, c, path)
 			fc, ctxs[path] = &v, &v
+		}
+		// State held for a rollout read from its first byte was left by
+		// content since replaced: it would mislabel the new content, and a
+		// stale HasUsageRecord drops every token_count response in it.
+		if at == 0 && *fc != (fileCtx{}) {
+			*fc = fileCtx{}
+			stageFileCtx(c, path, *fc)
 		}
 
 		var l codexLine

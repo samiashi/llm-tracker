@@ -24,34 +24,37 @@ const maxWholeFileBytes = 64 << 20
 // Three details matter. A line that is still being written is left alone, so
 // the cursor never lands mid-record and the partial line is picked up whole on
 // the next pass. A file that has shrunk was rotated or replaced, so reading
-// restarts from zero. And lines are read with ReadBytes rather than a Scanner
-// because Claude Code records routinely exceed bufio.Scanner's limit, which
-// would otherwise abort the file with a confusing error.
-func tailJSONL(ctx context.Context, st *store.Store, path string, fn func(at int64, line []byte)) (consumedBytes, newOffset, fileSize int64, err error) {
+// restarts from zero, and rewound says so: that position must be committed
+// even when no complete line follows it, or once the replacement outgrows the
+// old file the next pass resumes at the old offset, inside it. And lines are
+// read with ReadBytes rather than a Scanner because Claude Code records
+// routinely exceed bufio.Scanner's limit, which would otherwise abort the file
+// with a confusing error.
+func tailJSONL(ctx context.Context, st *store.Store, path string, fn func(at int64, line []byte)) (consumedBytes, newOffset, fileSize int64, rewound bool, err error) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, false, err
 	}
 	size := fi.Size()
 
 	offset, lastSize, err := st.Cursor(ctx, path)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, false, err
 	}
 	if size < offset || size < lastSize {
-		offset = 0
+		offset, rewound = 0, true
 	}
 	if offset >= size {
-		return 0, offset, size, nil
+		return 0, offset, size, rewound, nil
 	}
 
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, false, err
 	}
 	defer f.Close() //nolint:errcheck
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, false, err
 	}
 
 	r := bufio.NewReaderSize(f, 256*1024)
@@ -74,7 +77,7 @@ func tailJSONL(ctx context.Context, st *store.Store, path string, fn func(at int
 	// Not persisted here: the caller commits the cursor with the rows it
 	// covers, or an interrupted pass marks bytes read whose events were never
 	// stored.
-	return consumed, offset + consumed, size, nil
+	return consumed, offset + consumed, size, rewound, nil
 }
 
 // walkRoot is filepath.WalkDir that also descends a root which is itself a
@@ -121,7 +124,7 @@ func walkJSONL(
 				return ctx.Err()
 			}
 
-			n, offset, size, terr := tailJSONL(ctx, c.Store, path, func(at int64, line []byte) { onLine(path, at, line) })
+			n, offset, size, rewound, terr := tailJSONL(ctx, c.Store, path, func(at int64, line []byte) { onLine(path, at, line) })
 			if terr != nil {
 				res.Errors = append(res.Errors, terr)
 				// Nothing is committed, so the cursor stays where it was and
@@ -133,7 +136,7 @@ func walkJSONL(
 
 			// Rows and cursor move together: an interrupted pass either keeps
 			// both or neither, and never advances past events it did not store.
-			stored, cerr := c.commitFile(ctx, path, n, offset, size)
+			stored, cerr := c.commitFile(ctx, path, n > 0 || rewound, offset, size)
 			if cerr != nil {
 				res.Errors = append(res.Errors, cerr)
 			}

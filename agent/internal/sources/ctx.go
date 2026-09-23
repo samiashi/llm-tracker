@@ -120,13 +120,15 @@ func (c *Ctx) drainMeta() map[string]string {
 }
 
 // commitFile persists what a file produced together with its read position.
-func (c *Ctx) commitFile(ctx context.Context, path string, consumed, offset, size int64) (int, error) {
+// moved says the position is not the one stored: bytes were consumed, or the
+// file was read again from its start.
+func (c *Ctx) commitFile(ctx context.Context, path string, moved bool, offset, size int64) (int, error) {
 	events := c.Drain()
 	c.Emitted += len(events)
 	meta := c.drainMeta()
-	// Nothing read and nothing to store, so no cursor to move: rewriting an
-	// identical one costs a write transaction per unchanged file per pass.
-	if len(events) == 0 && len(meta) == 0 && consumed == 0 {
+	// Nothing to store and no cursor to move: rewriting an identical one costs
+	// a write transaction per unchanged file per pass.
+	if len(events) == 0 && len(meta) == 0 && !moved {
 		return 0, nil
 	}
 	return c.Store.CommitFile(ctx, path, offset, size, toRecords(events), meta)
@@ -136,7 +138,7 @@ func (c *Ctx) commitFile(ctx context.Context, path string, consumed, offset, siz
 // that read a database rather than a log. It is commitFile with no file: an
 // empty path moves no cursor.
 func (c *Ctx) CommitPending(ctx context.Context) (int, error) {
-	return c.commitFile(ctx, "", 0, 0, 0)
+	return c.commitFile(ctx, "", false, 0, 0)
 }
 
 func toRecords(events []schema.Event) []store.Record {

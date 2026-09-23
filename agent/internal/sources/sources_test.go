@@ -26,7 +26,7 @@ func TestTailerLeavesPartialTrailingLine(t *testing.T) {
 
 	var seen []int
 	read := func() {
-		_, offset, size, err := tailJSONL(ctx, st, p, func(_ int64, line []byte) {
+		_, offset, size, _, err := tailJSONL(ctx, st, p, func(_ int64, line []byte) {
 			var v struct{ N int }
 			if json.Unmarshal(line, &v) == nil {
 				seen = append(seen, v.N)
@@ -68,7 +68,7 @@ func TestTailerRestartsOnTruncation(t *testing.T) {
 
 	count := func() int {
 		n := 0
-		_, offset, size, err := tailJSONL(ctx, st, p, func(int64, []byte) { n++ })
+		_, offset, size, _, err := tailJSONL(ctx, st, p, func(int64, []byte) { n++ })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func TestCursorDoesNotAdvanceWithoutTheRows(t *testing.T) {
 
 	// Read without committing, as an interrupted pass would.
 	n := 0
-	if _, _, _, err := tailJSONL(ctx, st, p, func(int64, []byte) { n++ }); err != nil {
+	if _, _, _, _, err := tailJSONL(ctx, st, p, func(int64, []byte) { n++ }); err != nil {
 		t.Fatal(err)
 	}
 	if n != 2 {
@@ -202,7 +202,7 @@ func TestCursorDoesNotAdvanceWithoutTheRows(t *testing.T) {
 
 	// A second pass therefore sees the same lines again.
 	again := 0
-	if _, _, _, err := tailJSONL(ctx, st, p, func(int64, []byte) { again++ }); err != nil {
+	if _, _, _, _, err := tailJSONL(ctx, st, p, func(int64, []byte) { again++ }); err != nil {
 		t.Fatal(err)
 	}
 	if again != 2 {

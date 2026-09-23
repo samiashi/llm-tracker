@@ -213,6 +213,30 @@ func TestCodexKeepsResponsesReportedBeforeTheFirstUsageRecord(t *testing.T) {
 	}
 }
 
+// A rollout replaced by a shorter one is read again from its start, and the
+// state the old content left must not parse it: a stale HasUsageRecord drops
+// every token_count response in the replacement.
+func TestCodexReadsAReplacedRolloutWithoutTheOldOnesState(t *testing.T) {
+	h := newCodexHome(t)
+	rel := liveDir + parentRollout
+	h.write(t, rel,
+		sessionMeta(0, "p", "p", "user", ""),
+		usageRecord("2026-09-20T10:00:01Z", 1, "resp_A", 5000),
+		usageRecord("2026-09-20T10:00:02Z", 2, "resp_B", 6000),
+		usageRecord("2026-09-20T10:00:03Z", 3, "resp_C", 7000),
+	)
+	h.collect(t, nil)
+	if err := os.Remove(filepath.Join(h.home, rel)); err != nil {
+		t.Fatal(err)
+	}
+	h.write(t, rel, tokenCount("2026-09-21T10:00:03Z", 3, 100, 100))
+	h.collect(t, nil)
+
+	if evs := storedEvents(t, h.st); len(evs) != 4 {
+		t.Fatalf("stored %d events, want 4: the replacement's response was dropped", len(evs))
+	}
+}
+
 // The parent's copied header must not relabel a rollout, even when it arrives
 // in a later pass.
 func TestCodexLabelsARolloutFromItsOwnHeader(t *testing.T) {
