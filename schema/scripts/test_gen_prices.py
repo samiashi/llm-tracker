@@ -113,6 +113,16 @@ class GenPricesTest(unittest.TestCase):
         r = gen.rate("mistral/y", spec("mistral", 2, 6, cw5=2.5))
         self.assertEqual(r["cache_write_1h"], 2.5)
 
+    def test_an_entry_missing_a_price_is_left_unpriced(self):
+        # The price upstream leaves out is unknown, not zero.
+        rates = gen.build({**UPSTREAM,
+                           "claude-new": {"litellm_provider": "anthropic", "mode": "chat",
+                                          "input_cost_per_token": 3 * M},
+                           "openai/gpt-new": {"litellm_provider": "openai", "mode": "chat",
+                                              "output_cost_per_token": 10 * M}})
+        for key in ("|claude-new", "openai|gpt-new", "|gpt-new"):
+            self.assertNotIn(key, rates)
+
     def test_an_entry_priced_at_zero_is_left_unpriced(self):
         # Left unpriced: a silent $0 would hide a gap upstream.
         rates = gen.build({**UPSTREAM, "openrouter/some-model": spec("openrouter", 0, 0)})

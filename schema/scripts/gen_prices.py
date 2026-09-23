@@ -90,9 +90,10 @@ def rate(name: str, spec: dict) -> dict | None:
     """Convert one LiteLLM spec into our per-million-token shape."""
     inp = spec.get(FIELDS["input"])
     out = spec.get(FIELDS["output"])
-    if inp is None and out is None:
+    # Missing either price, the model is left unpriced: filled in as zero,
+    # its tokens would read as free.
+    if inp is None or out is None:
         return None
-    inp = inp or 0
 
     # A missing cache price is never a free one: Cost() would report those
     # tokens as priced at zero. Anthropic's cache writes are fixed multiples of
@@ -112,7 +113,7 @@ def rate(name: str, spec: dict) -> dict | None:
 
     base = {
         "input": inp,
-        "output": out or 0,
+        "output": out,
         "cache_read": cache_read,
         "cache_write_5m": cw5,
         "cache_write_1h": cw1h,
