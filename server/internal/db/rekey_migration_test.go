@@ -1,6 +1,7 @@
 package db
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"testing"
@@ -75,16 +76,23 @@ func nativeIDs(t *testing.T, d *DB, src schema.Source, machine string) []string 
 
 // withoutRekeyMigration rolls back to just before 00016, runs fill against
 // that schema, and migrates up again, so 00016's one-time pass sees what fill
-// stored. DownTo, not Down: Down undoes only the latest migration, which is
-// 00016 no longer than until the next one is added.
+// stored.
 func withoutRekeyMigration(t *testing.T, d *DB, fill func()) {
+	t.Helper()
+	withoutMigrationsAfter(t, d, 15, fill)
+}
+
+// withoutMigrationsAfter rolls back to version, runs fill against that
+// schema, and migrates up again. DownTo, not Down: Down undoes only the
+// latest migration, which a test's own stops being once another is added.
+func withoutMigrationsAfter(t *testing.T, d *DB, version int64, fill func()) {
 	t.Helper()
 	goose.SetBaseFS(migrationFS)
 	goose.SetLogger(goose.NopLogger())
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.DownTo(d.write, "migrations", 15); err != nil {
+	if err := goose.DownTo(d.write, "migrations", version); err != nil {
 		t.Fatal(err)
 	}
 	fill()
@@ -194,21 +202,39 @@ func TestClineOldKeysRetireOnlyWhereTheirReplacementIsPresent(t *testing.T) {
 	})
 }
 
-// Continue's re-key to the path under dev_data replaces the basename row for
-// the same offset and record; the pre-collector-5 path row is replaced by any
-// later row for the same record. Anything unmatched stays.
+// continueRow is a Continue record as the collector version given keys it:
+// model "m", 1 output token.
+func continueRow(nid string, collector int, ts time.Time, in int64) schema.Event {
+	e := keyed(schema.SourceContinue, "m", nid, "", ts, in)
+	e.Collector = collector
+	return e
+}
+
+const (
+	continuePath = "/Users/dev/.continue/dev_data/0.2.0/tokensGenerated.jsonl#20260920T100000.000#m"
+	continueBase = "tokensGenerated.jsonl#0"
+	continueRel  = "0.2.0/tokensGenerated.jsonl#0"
+)
+
+// Continue's collector-10 key names the machine. Each older key gives way to
+// the row now keyed on the same record, and only where that row is present:
+// a path-keyed record to any later row at its time, a basename to a row
+// ending in it, a collector-9 row to its own machine's "m:" row. Anything
+// unmatched may be the only record left, and stays.
 func TestContinueOldKeysRetireOnlyWhereTheirReplacementIsPresent(t *testing.T) {
 	later := rekeyAt.Add(time.Minute)
 	old := []schema.Event{
-		keyed(schema.SourceContinue, "m", "/Users/dev/.continue/dev_data/0.2.0/tokensGenerated.jsonl#20260920T100000.000#m", "", rekeyAt, 10),
-		keyed(schema.SourceContinue, "m", "tokensGenerated.jsonl#0", "", rekeyAt, 10),
-		keyed(schema.SourceContinue, "m", "tokensGenerated.jsonl#64", "", later, 30), // no replacement
+		continueRow(continuePath, 4, rekeyAt, 10),
+		continueRow(continueBase, 8, rekeyAt, 10),
+		continueRow(continueRel, 9, rekeyAt, 10),
+		continueRow("tokensGenerated.jsonl#128", 9, later, 30), // a root file's record
+		continueRow("tokensGenerated.jsonl#64", 8, later, 40),  // no replacement
 	}
 	current := []schema.Event{
-		keyed(schema.SourceContinue, "m", "0.2.0/tokensGenerated.jsonl#0", "", rekeyAt, 10),
-		keyed(schema.SourceContinue, "m", "0.1.0/tokensGenerated.jsonl#0", "", later, 20), // lost to the collision
+		continueRow("m:"+continueRel, 10, rekeyAt, 10),
+		continueRow("m:tokensGenerated.jsonl#128", 10, later, 30),
 	}
-	want := []string{"0.1.0/tokensGenerated.jsonl#0", "0.2.0/tokensGenerated.jsonl#0", "tokensGenerated.jsonl#64"}
+	want := []string{"m:0.2.0/tokensGenerated.jsonl#0", "m:tokensGenerated.jsonl#128", "tokensGenerated.jsonl#64"}
 
 	t.Run("replacement arrives later", func(t *testing.T) {
 		d := newDB(t)
@@ -228,11 +254,89 @@ func TestContinueOldKeysRetireOnlyWhereTheirReplacementIsPresent(t *testing.T) {
 	})
 	t.Run("both stored before the migration", func(t *testing.T) {
 		d := newDB(t)
-		withoutRekeyMigration(t, d, func() { storeRaw(t, d, append(old, current...)...) })
+		withoutMigrationsAfter(t, d, 22, func() { ingest(t, d, append(old, current...)...) })
 		if got := nativeIDs(t, d, schema.SourceContinue, "m"); !slices.Equal(got, want) {
 			t.Fatalf("holds %v, want %v", got, want)
 		}
 	})
+}
+
+// The server's copy of sources.Superseded: an old row that matches a current
+// one in all but one part of the key is a different record, and may be the
+// only one of it left. Checked in both arrival orders, which run different
+// triggers.
+func TestRekeyTriggersSpareARowThatDiffersInAnyPartOfItsKey(t *testing.T) {
+	later := rekeyAt.Add(time.Second)
+	clineNow := keyed(schema.SourceCline, "m", "task#1790000001000#0", "task", rekeyAt, 10)
+	contNow := continueRow("m:"+continueRel, 10, rekeyAt, 10)
+	with := func(e schema.Event, change func(*schema.Event)) schema.Event {
+		change(&e)
+		return e
+	}
+	for _, tc := range []struct {
+		name     string
+		old, now schema.Event
+		machine  string // the old row's, when not the current one's
+	}{
+		{name: "cline: another request at the same time",
+			old: keyed(schema.SourceCline, "m", "task#2", "task", rekeyAt, 11), now: clineNow},
+		{name: "cline: the same usage at another time",
+			old: keyed(schema.SourceCline, "m", "task#5", "task", later, 10), now: clineNow},
+		{name: "cline: another task",
+			old: keyed(schema.SourceCline, "m", "gone#1", "gone", rekeyAt, 10), now: clineNow},
+
+		{name: "continue path key: another time",
+			old: continueRow(continuePath, 4, later, 10), now: contNow},
+		{name: "continue path key: another model",
+			old: with(continueRow(continuePath, 4, rekeyAt, 10), func(e *schema.Event) { e.Model = "m2" }), now: contNow},
+		{name: "continue path key: other input",
+			old: continueRow(continuePath, 4, rekeyAt, 11), now: contNow},
+		{name: "continue path key: other output",
+			old: with(continueRow(continuePath, 4, rekeyAt, 10), func(e *schema.Event) { e.Usage.OutputTokens = 2 }), now: contNow},
+		{name: "continue path key: another machine",
+			old: continueRow(continuePath, 4, rekeyAt, 10), now: contNow, machine: "m2"},
+
+		{name: "continue basename: another offset",
+			old: continueRow("tokensGenerated.jsonl#64", 8, rekeyAt, 10), now: contNow},
+		{name: "continue basename: a file whose name it ends",
+			old: continueRow("Generated.jsonl#0", 8, rekeyAt, 10), now: contNow},
+		{name: "continue basename: another model",
+			old: with(continueRow(continueBase, 8, rekeyAt, 10), func(e *schema.Event) { e.Model = "m2" }), now: contNow},
+		{name: "continue basename: other input",
+			old: continueRow(continueBase, 8, rekeyAt, 11), now: contNow},
+		{name: "continue basename: other output",
+			old: with(continueRow(continueBase, 8, rekeyAt, 10), func(e *schema.Event) { e.Usage.OutputTokens = 2 }), now: contNow},
+		{name: "continue basename: another machine",
+			old: continueRow(continueBase, 8, rekeyAt, 10), now: contNow, machine: "m2"},
+		{name: "continue basename shape: a root file's collector-9 key",
+			old: continueRow(continueBase, 9, rekeyAt, 10), now: contNow},
+
+		{name: "continue collector 9: another offset",
+			old: continueRow("0.2.0/tokensGenerated.jsonl#64", 9, rekeyAt, 10), now: contNow},
+		{name: "continue collector 9: another directory",
+			old: continueRow("0.1.0/tokensGenerated.jsonl#0", 9, rekeyAt, 10), now: contNow},
+		{name: "continue collector 9: another machine",
+			old: continueRow(continueRel, 9, rekeyAt, 10), now: contNow, machine: "m2"},
+		{name: "continue collector 9: a replacement not from collector 10",
+			old: continueRow(continueRel, 9, rekeyAt, 10), now: continueRow("m:"+continueRel, 9, rekeyAt, 10)},
+	} {
+		oldMachine := cmp.Or(tc.machine, "m")
+		for _, order := range []string{"old first", "old last"} {
+			t.Run(tc.name+", "+order, func(t *testing.T) {
+				d := newDB(t)
+				if order == "old first" {
+					ingestFrom(t, d, oldMachine, tc.old)
+					ingestFrom(t, d, "m", tc.now)
+				} else {
+					ingestFrom(t, d, "m", tc.now)
+					ingestFrom(t, d, oldMachine, tc.old)
+				}
+				if got := nativeIDs(t, d, tc.old.Source, oldMachine); !slices.Contains(got, tc.old.NativeID) {
+					t.Fatalf("holds %v: %s was retired though nothing replaces it", got, tc.old.NativeID)
+				}
+			})
+		}
+	}
 }
 
 // A day before the legacy floor is refused at ingest, so its old-key rows must

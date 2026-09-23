@@ -95,7 +95,8 @@ wrong numbers, and the comment above the code says which.
    that names an old row only where its replacement exists; where no old row
    can be matched, in `purgeOnUpgrade` instead, and only for an adapter that
    `KeepsHistory`, since a purge deletes rows before the re-read. Either way,
-   add the same rule server-side as a migration (00016 is the model): the
+   add the same rule server-side as a migration (00016 and 00023 are the
+   models): the
    server holds its own copy of the old rows, and nothing the agent does
    locally reaches it.
 10. **Time series must be gap-filled.** The API returns only days with
@@ -308,8 +309,9 @@ provision but a disk.
   Rolled-up days keep the prices they had: a rollup keeps sums, not the
   dimensions pricing needs.
 - **Forward only in practice.** `00013`, `00016`, `00020` and `00021` delete data
-  their Down cannot restore, and `00016` installs triggers that keep retiring
-  re-keyed rows as agents upgrade, so never plan a rollback that crosses one;
+  their Down cannot restore, and `00016` and `00023` install triggers that
+  keep retiring re-keyed rows as agents upgrade, so never plan a rollback that
+  crosses one;
   roll forward with a new migration. And never edit one that has shipped.
 - **One writer, ever.** SQLite on a volume means exactly one instance. Two
   gives you two divergent databases and no error.
