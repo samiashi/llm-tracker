@@ -44,7 +44,7 @@ func cmdScan(dataDir, home string, log *slog.Logger) error {
 
 func printSummary(sum *collect.Summary) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "SOURCE\tSTATUS\tFILES\tREAD\tFOUND\tNEW\tQUOTA\tUNPARSED\tERR")
+	_, _ = fmt.Fprintln(w, "SOURCE\tSTATUS\tFILES\tREAD\tFOUND\tNEW\tUNPARSED\tERR")
 	names := make([]string, 0, len(sum.PerSource))
 	for k := range sum.PerSource {
 		names = append(names, string(k))
@@ -56,9 +56,9 @@ func printSummary(sum *collect.Summary) {
 		if s.Available {
 			status = "ok"
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%d\t%d\t%d\t%d\t%d\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%d\t%d\t%d\t%d\n",
 			n, status, s.Files, humanBytes(s.BytesRead), s.Found, s.Stored,
-			s.QuotaFound, s.Unparsed, s.Errors)
+			s.Unparsed, s.Errors)
 	}
 	_ = w.Flush()
 }
@@ -92,8 +92,8 @@ func cmdSync(dataDir string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("uploaded %d events, %d quota samples, %d unsupported harnesses in %d batch(es)\n",
-		stats.Events, stats.Quota, stats.Unknown, stats.Batches)
+	fmt.Printf("uploaded %d events and %d unsupported harnesses in %d batch(es)\n",
+		stats.Events, stats.Unknown, stats.Batches)
 	if stats.Rejected > 0 {
 		fmt.Printf("the server rejected %d of those events as implausible\n", stats.Rejected)
 	}

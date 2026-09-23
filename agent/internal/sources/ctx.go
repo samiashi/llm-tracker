@@ -29,9 +29,7 @@ type Ctx struct {
 	// be attributed by its own timestamp.
 	AccountHistory []store.AccountWindow
 
-	events   []schema.Event
-	quota    []schema.QuotaSample
-	quotaIdx map[string]int
+	events []schema.Event
 	// unparsed counts lines an adapter read and could not decode, folded
 	// into Result at the end of a walk.
 	unparsed int
@@ -39,9 +37,10 @@ type Ctx struct {
 	// rows and cursor, rather than after the walk. See store.CommitFile.
 	meta map[string]string
 
-	// Totals counts everything emitted across the whole pass, since the
-	// per-unit buffers are drained as they are committed.
-	Totals struct{ Events, Quota int }
+	// Emitted counts events emitted since collect.Run last took it: one
+	// adapter's pass. The buffer is drained as each file commits, so this is
+	// the only count of what was parsed.
+	Emitted int
 }
 
 // Unparsed records a line the adapter could not decode.
@@ -91,34 +90,17 @@ func (c *Ctx) AccountRefAt(provider string, ts time.Time) string {
 // emit records one usage event.
 func (c *Ctx) emit(e schema.Event) { c.events = append(c.events, e) }
 
-// emitQuota records a quota reading, collapsing repeats within the same bucket
-// to their highest value. Codex attaches rate limits to every response, so
-// collapsing at capture keeps a million readings of one gauge out of memory.
-func (c *Ctx) emitQuota(q schema.QuotaSample) {
-	if c.quotaIdx == nil {
-		c.quotaIdx = make(map[string]int)
-	}
-	if i, ok := c.quotaIdx[q.ID]; ok {
-		if q.UsedPercent > c.quota[i].UsedPercent {
-			c.quota[i] = q
-		}
-		return
-	}
-	c.quotaIdx[q.ID] = len(c.quota)
-	c.quota = append(c.quota, q)
-}
-
 // Drain takes everything emitted since the last call, so each adapter's output
 // can be attributed to it.
-func (c *Ctx) Drain() ([]schema.Event, []schema.QuotaSample) {
-	e, q := c.events, c.quota
-	c.events, c.quota, c.quotaIdx = nil, nil, nil
-	return e, q
+func (c *Ctx) Drain() []schema.Event {
+	e := c.events
+	c.events = nil
+	return e
 }
 
 // discard drops what a failed unit emitted, so nothing half-parsed is stored.
 func (c *Ctx) discard() {
-	c.events, c.quota, c.quotaIdx, c.meta = nil, nil, nil, nil
+	c.events, c.meta = nil, nil
 }
 
 // StageMeta records parser state to be written in the same transaction as the
@@ -139,17 +121,15 @@ func (c *Ctx) drainMeta() map[string]string {
 
 // commitFile persists what a file produced together with its read position.
 func (c *Ctx) commitFile(ctx context.Context, path string, consumed, offset, size int64) (int, error) {
-	events, quota := c.Drain()
-	c.Totals.Events += len(events)
-	c.Totals.Quota += len(quota)
+	events := c.Drain()
+	c.Emitted += len(events)
 	meta := c.drainMeta()
 	// Nothing read and nothing to store, so no cursor to move: rewriting an
 	// identical one costs a write transaction per unchanged file per pass.
-	if len(events) == 0 && len(quota) == 0 && len(meta) == 0 && consumed == 0 {
+	if len(events) == 0 && len(meta) == 0 && consumed == 0 {
 		return 0, nil
 	}
-	return c.Store.CommitFile(ctx, path, offset, size,
-		toRecords(events), toQuotaRecords(quota), meta)
+	return c.Store.CommitFile(ctx, path, offset, size, toRecords(events), meta)
 }
 
 // CommitPending persists anything emitted outside a file walk, for adapters
@@ -167,20 +147,6 @@ func toRecords(events []schema.Event) []store.Record {
 		out = append(out, store.Record{
 			ID: e.ID, TS: e.TS, TotalTokens: e.Usage.TotalTokens(),
 			Collector: CollectorVersion, Payload: e,
-		})
-	}
-	return out
-}
-
-func toQuotaRecords(quota []schema.QuotaSample) []store.Record {
-	out := make([]store.Record, 0, len(quota))
-	for i := range quota {
-		q := quota[i]
-		// Utilisation is scaled into the same discriminator the conflict rule
-		// uses, so the highest reading in an hourly bucket is the one kept.
-		out = append(out, store.Record{
-			ID: q.ID, TS: q.TS, TotalTokens: int64(q.UsedPercent * 1000),
-			Collector: CollectorVersion, Payload: q,
 		})
 	}
 	return out

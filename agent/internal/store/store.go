@@ -41,15 +41,8 @@ CREATE TABLE IF NOT EXISTS event (
 );
 CREATE INDEX IF NOT EXISTS idx_event_unsent ON event(sent, ts);
 
-CREATE TABLE IF NOT EXISTS quota (
-  id           TEXT PRIMARY KEY,
-  ts           INTEGER NOT NULL,
-  total_tokens INTEGER NOT NULL DEFAULT 0,
-  collector    INTEGER NOT NULL DEFAULT 0,
-  payload      TEXT NOT NULL,
-  sent         INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_quota_unsent ON quota(sent, ts);
+-- An older store's plan-quota readings: nothing reads or sends them.
+DROP TABLE IF EXISTS quota;
 
 -- Harness directories found on this machine that we have no adapter for.
 CREATE TABLE IF NOT EXISTS unknown_source (
@@ -107,7 +100,6 @@ func Open(path string) (*Store, error) {
 		`ALTER TABLE unknown_source ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'`,
 		`ALTER TABLE unknown_source ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE event ADD COLUMN collector INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE quota ADD COLUMN collector INTEGER NOT NULL DEFAULT 0`,
 	} {
 		_, _ = db.ExecContext(context.Background(), stmt)
 	}
@@ -141,8 +133,8 @@ func (s *Store) SetMeta(ctx context.Context, k, v string) error {
 	return err
 }
 
-// CommitFile stores a file's events, quota, parser state and read position in
-// one transaction, and is the only way rows reach the archive (invariant 2).
+// CommitFile stores a file's events, parser state and read position in one
+// transaction, and is the only way rows reach the archive (invariant 2).
 //
 // A cursor that commits before its rows loses them for good when the pass is
 // interrupted: nothing reads those bytes again, and Claude Code deletes its
@@ -153,7 +145,7 @@ func (s *Store) SetMeta(ctx context.Context, k, v string) error {
 func (s *Store) CommitFile(
 	ctx context.Context,
 	path string, offset, size int64,
-	events, quota []Record,
+	events []Record,
 	meta map[string]string,
 ) (stored int, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -162,12 +154,9 @@ func (s *Store) CommitFile(
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	n, err := putAllTx(ctx, tx, Events, events)
+	n, err := putAllTx(ctx, tx, events)
 	if err != nil {
 		return 0, err
-	}
-	if _, err := putAllTx(ctx, tx, Quota, quota); err != nil {
-		return n, err
 	}
 	for k, v := range meta {
 		if _, err := tx.ExecContext(ctx,

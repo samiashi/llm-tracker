@@ -20,7 +20,7 @@ func open(t *testing.T) *Store {
 // put stores records the way a pass does, through CommitFile, with no cursor.
 func put(t *testing.T, s *Store, recs ...Record) {
 	t.Helper()
-	if _, err := s.CommitFile(context.Background(), "", 0, 0, recs, nil, nil); err != nil {
+	if _, err := s.CommitFile(context.Background(), "", 0, 0, recs, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -61,7 +61,7 @@ func TestStreamedResponseKeepsLargestReading(t *testing.T) {
 		t.Fatalf("got %d rows, want 1 -- streamed records must collapse", events)
 	}
 
-	_, payloads, err := s.Unsent(ctx, "event", 10)
+	_, payloads, err := s.Unsent(ctx, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestSmallerRereadIsIgnored(t *testing.T) {
 	now := time.Now()
 
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 900, Payload: 900})
-	if err := s.MarkSent(ctx, "event", []string{"r"}); err != nil {
+	if err := s.MarkSent(ctx, []string{"r"}); err != nil {
 		t.Fatal(err)
 	}
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 100, Payload: 100})
@@ -98,7 +98,7 @@ func TestLargerRereadRequeues(t *testing.T) {
 	now := time.Now()
 
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 100, Payload: 100})
-	_ = s.MarkSent(ctx, "event", []string{"r"})
+	_ = s.MarkSent(ctx, []string{"r"})
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 900, Payload: 900})
 
 	_, unsent, err := s.Stats(ctx)
@@ -115,7 +115,7 @@ func TestCursorRoundTrip(t *testing.T) {
 	if off, size, _ := s.Cursor(ctx, "/nope"); off != 0 || size != 0 {
 		t.Fatal("unknown path should start at zero")
 	}
-	if _, err := s.CommitFile(ctx, "/a", 120, 500, nil, nil, nil); err != nil {
+	if _, err := s.CommitFile(ctx, "/a", 120, 500, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	off, size, err := s.Cursor(ctx, "/a")
@@ -132,7 +132,7 @@ func TestANewerCollectorsSmallerReadingChangesNothing(t *testing.T) {
 
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 900, Collector: 1,
 		Payload: map[string]any{"v": 1, "total": 900}})
-	if err := s.MarkSent(ctx, "event", []string{"r"}); err != nil {
+	if err := s.MarkSent(ctx, []string{"r"}); err != nil {
 		t.Fatal(err)
 	}
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 100, Collector: 2,
@@ -153,7 +153,7 @@ func TestABackfillUpgradesAStreamedRowToItsFinalReading(t *testing.T) {
 
 	put(t, s, Record{ID: "req", TS: now, TotalTokens: 900, Collector: 7,
 		Payload: map[string]any{"collector": 7, "total": 900}})
-	if err := s.MarkSent(ctx, "event", []string{"req"}); err != nil {
+	if err := s.MarkSent(ctx, []string{"req"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -205,7 +205,7 @@ func TestLongerReadingReplacesThePayload(t *testing.T) {
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 900, Collector: 1,
 		Payload: map[string]any{"total": 900}})
 
-	_, payloads, err := s.Unsent(ctx, "event", 10)
+	_, payloads, err := s.Unsent(ctx, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestReplayingAStreamedResponseKeepsTheLargestReading(t *testing.T) {
 					Payload: map[string]any{"total": tok}})
 			}
 
-			_, payloads, err := s.Unsent(ctx, "event", 10)
+			_, payloads, err := s.Unsent(ctx, 10)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -259,7 +259,7 @@ func TestOlderCollectorIsIgnored(t *testing.T) {
 	now := time.Now()
 
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 100, Collector: 2, Payload: "new"})
-	_ = s.MarkSent(ctx, "event", []string{"r"})
+	_ = s.MarkSent(ctx, []string{"r"})
 	put(t, s, Record{ID: "r", TS: now, TotalTokens: 100, Collector: 1, Payload: "old"})
 
 	_, unsent, err := s.Stats(ctx)
@@ -268,32 +268,6 @@ func TestOlderCollectorIsIgnored(t *testing.T) {
 	}
 	if unsent != 0 {
 		t.Fatal("an older collector must not re-queue the row")
-	}
-}
-
-// Cowork adds payload keys exactly when a plan tips into overage, so a rule
-// that preferred more keys would replace the peak with the reset low.
-func TestQuotaPeakSurvivesAPayloadWithMoreKeys(t *testing.T) {
-	s, ctx := open(t), context.Background()
-	now := time.Now()
-
-	for _, q := range []Record{
-		{ID: "bucket", TS: now, TotalTokens: 92_000, Collector: 2,
-			Payload: map[string]any{"used_percent": 92.0}},
-		{ID: "bucket", TS: now, TotalTokens: 4_000, Collector: 2,
-			Payload: map[string]any{"used_percent": 4.0, "is_overage": true, "plan_type": "pro"}},
-	} {
-		if _, err := s.CommitFile(ctx, "", 0, 0, nil, []Record{q}, nil); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	_, payloads, err := s.Unsent(ctx, "quota", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(payloads[0]); got != `{"used_percent":92}` {
-		t.Fatalf("kept %s, want the 92%% peak", got)
 	}
 }
 
@@ -312,7 +286,7 @@ func TestRefusedRowsLeaveTheQueueWithoutBeingCalledSent(t *testing.T) {
 		rec("fresh", time.Now()),
 	)
 
-	n, err := s.Refused(ctx, "event", floor)
+	n, err := s.Refused(ctx, floor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +295,7 @@ func TestRefusedRowsLeaveTheQueueWithoutBeingCalledSent(t *testing.T) {
 	}
 
 	// The fresh row is reachable, not stuck behind the refused ones.
-	ids, _, err := s.Unsent(ctx, "event", 10)
+	ids, _, err := s.Unsent(ctx, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +330,7 @@ func TestResetClearsExactlyItsScope(t *testing.T) {
 		"/Users/dev/.kimi/sessions/a/wire.jsonl",
 		"/Users/dev/.claude/projects/-Users-dev-src-kimi-bench/s.jsonl",
 	} {
-		if _, err := s.CommitFile(ctx, p, 1, 1, nil, nil, nil); err != nil {
+		if _, err := s.CommitFile(ctx, p, 1, 1, nil, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -414,5 +388,35 @@ func TestAnOlderStoreLosesTheDuplicateAccountWindowIndex(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatal("idx_account_window survived reopening")
+	}
+}
+
+// Nothing reads or sends plan-quota readings, so an older store's table of
+// them must not linger in the archive.
+func TestOpeningAnOlderStoreDropsItsQuotaTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "t.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(context.Background(), `CREATE TABLE quota (
+		id TEXT PRIMARY KEY, ts INTEGER NOT NULL, total_tokens INTEGER NOT NULL DEFAULT 0,
+		collector INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0)`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	s, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var n int
+	if err := s.db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM sqlite_master WHERE name = 'quota'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("the quota table survived reopening")
 	}
 }

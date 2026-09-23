@@ -56,7 +56,7 @@ wrong numbers, and the comment above the code says which.
    completions, file contents, diffs or tool arguments. That is the privacy
    boundary and it is enforced by the type. `agent/internal/sources/privacy_test.go`
    fails if a new field appears on any wire type (`Event`, `Usage`,
-   `QuotaSample`, `UnknownSource`, `Batch`, `Account`, `EnrollRequest`) -- it
+   `UnknownSource`, `Batch`, `Account`, `EnrollRequest`) -- it
    reads the _type_, so a field tagged `omitempty` cannot slip past by being
    unset.
 5. **Aggregate queries over the reporting window read the `event_daily` view,

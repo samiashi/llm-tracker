@@ -49,11 +49,10 @@ type SourceSummary struct {
 	BytesRead int64
 	// Scanned counts records read from somewhere that is not a file, so a
 	// database-backed adapter can still say it read something.
-	Scanned    int
-	Found      int
-	Stored     int
-	QuotaFound int
-	Errors     int
+	Scanned int
+	Found   int
+	Stored  int
+	Errors  int
 	// Unparsed counts lines read and not understood.
 	Unparsed int
 }
@@ -276,8 +275,7 @@ func Run(ctx context.Context, st *store.Store, home string, log *slog.Logger) (*
 
 		ss.Files, ss.BytesRead, ss.Scanned = res.Files, res.BytesRead, res.Scanned
 		ss.Stored = res.Stored + pending
-		ss.Found, ss.QuotaFound = c.Totals.Events, c.Totals.Quota
-		c.Totals.Events, c.Totals.Quota = 0, 0
+		ss.Found, c.Emitted = c.Emitted, 0
 		ss.Errors += len(res.Errors)
 		ss.Unparsed = res.Unparsed
 		for _, e := range res.Errors {

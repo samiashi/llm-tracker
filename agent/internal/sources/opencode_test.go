@@ -55,7 +55,7 @@ func collected(t *testing.T, c *Ctx) []schema.Event {
 	if _, err := (OpenCode{}).Collect(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
-	_, payloads, err := c.Store.Unsent(context.Background(), "event", 100)
+	_, payloads, err := c.Store.Unsent(context.Background(), 100)
 	if err != nil {
 		t.Fatal(err)
 	}

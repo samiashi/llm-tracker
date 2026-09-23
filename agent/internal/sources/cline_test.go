@@ -77,7 +77,7 @@ func TestClineDecodesTheNestedUsageBlob(t *testing.T) {
 	if _, err := a.readTask(c, taskFile(c, a), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	events, _ := c.Drain()
+	events := c.Drain()
 	if len(events) != 1 {
 		t.Fatalf("got %d events, want 1", len(events))
 	}
@@ -105,7 +105,7 @@ func TestClineTakesModelFromModelInfo(t *testing.T) {
 	if _, err := a.readTask(c, taskFile(c, a), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	events, _ := c.Drain()
+	events := c.Drain()
 	if len(events) != 1 {
 		t.Fatalf("got %d events, want 1", len(events))
 	}
@@ -124,7 +124,7 @@ func TestClineKeepsRequestsInTheSameMillisecondApart(t *testing.T) {
 	if _, err := a.readTask(c, taskFile(c, a), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	events, _ := c.Drain()
+	events := c.Drain()
 	if len(events) != 2 {
 		t.Fatalf("got %d events, want 2", len(events))
 	}
@@ -157,7 +157,7 @@ func TestClineIgnoresNonRequestEntries(t *testing.T) {
 	if _, err := a.readTask(c, taskFile(c, a), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	events, _ := c.Drain()
+	events := c.Drain()
 	if len(events) != 0 {
 		t.Fatalf("got %d events, want 0 -- a zero-token request is not usage", len(events))
 	}
@@ -173,14 +173,14 @@ func TestClineKeySurvivesAMessageBeingDeleted(t *testing.T) {
 	if _, err := a.readTask(before, taskFile(before, a), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	evBefore, _ := before.Drain()
+	evBefore := before.Drain()
 
 	// The same request, with the unrelated message above it removed.
 	after, a2 := clineCtx(t, "["+req+"]")
 	if _, err := a2.readTask(after, taskFile(after, a2), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	evAfter, _ := after.Drain()
+	evAfter := after.Drain()
 
 	if len(evBefore) != 1 || len(evAfter) != 1 {
 		t.Fatalf("got %d then %d events, want 1 each", len(evBefore), len(evAfter))
@@ -204,7 +204,7 @@ func TestClineKeepsSameMillisecondRequestsDistinct(t *testing.T) {
 	if _, err := a.readTask(c, taskFile(c, a), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	events, _ := c.Drain()
+	events := c.Drain()
 	if len(events) != 2 {
 		t.Fatalf("got %d events, want 2", len(events))
 	}
@@ -222,7 +222,7 @@ func TestClineOmitsNativeCostWhenClineReportedNone(t *testing.T) {
 	if _, err := a.readTask(c, taskFile(c, a), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	events, _ := c.Drain()
+	events := c.Drain()
 	if len(events) != 1 {
 		t.Fatalf("got %d events, want 1", len(events))
 	}
@@ -239,7 +239,7 @@ func TestClineOmitsNativeCostWhenClineReportedNone(t *testing.T) {
 	if _, err := a2.readTask(c2, taskFile(c2, a2), "task-1"); err != nil {
 		t.Fatal(err)
 	}
-	ev2, _ := c2.Drain()
+	ev2 := c2.Drain()
 	if len(ev2) != 1 || ev2[0].NativeCostUSD == nil || *ev2[0].NativeCostUSD != 0 {
 		t.Fatal("a reported zero cost must be preserved as zero")
 	}

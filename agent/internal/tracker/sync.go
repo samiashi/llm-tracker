@@ -59,7 +59,6 @@ func New(baseURL, token, version string, log *slog.Logger) *Client {
 type Stats struct {
 	Batches int
 	Events  int
-	Quota   int
 	Unknown int
 	// Skipped counts events the server refused because they predate its
 	// retention floor.
@@ -105,15 +104,11 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 			return stats, ctx.Err()
 		}
 
-		eventIDs, eventPayloads, err := st.Unsent(ctx, store.Events, batchSize)
+		eventIDs, eventPayloads, err := st.Unsent(ctx, batchSize)
 		if err != nil {
 			return stats, err
 		}
-		quotaIDs, quotaPayloads, err := st.Unsent(ctx, store.Quota, batchSize)
-		if err != nil {
-			return stats, err
-		}
-		if len(eventIDs) == 0 && len(quotaIDs) == 0 && unknownSent {
+		if len(eventIDs) == 0 && unknownSent {
 			return stats, nil
 		}
 
@@ -126,7 +121,6 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 				Accounts:     accounts,
 			},
 			Events: eventPayloads,
-			Quota:  quotaPayloads,
 		}
 		if !unknownSent {
 			body.UnknownSource = unknownDTO
@@ -139,20 +133,15 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 
 		// Re-offer whatever the server would now take: everything once it keeps
 		// everything, else the refused rows at or above its current floor,
-		// which stay at sent = 2 otherwise. Quota is never refused by age, so
-		// any refused quota row goes back.
+		// which stay at sent = 2 otherwise.
 		requeued := int64(0)
 		if from, ok := ack.acceptsFrom(); ok {
-			for table, since := range map[store.Table]time.Time{store.Events: from, store.Quota: {}} {
-				n, err := st.Requeue(ctx, table, since)
-				if err != nil {
-					return stats, err
-				}
-				if n > 0 {
-					c.Log.Info("re-queueing rows the server refused before and would now take",
-						"table", table, "requeued", n)
-				}
-				requeued += n
+			if requeued, err = st.Requeue(ctx, from); err != nil {
+				return stats, err
+			}
+			if requeued > 0 {
+				c.Log.Info("re-queueing events the server refused before and would now take",
+					"requeued", requeued)
 			}
 		}
 
@@ -162,10 +151,7 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 		if ack.EventsSkipped > 0 {
 			retired := 0
 			if before, ok := floorStart(ack.RetentionFloor); ok {
-				// Events only: the server takes quota samples of any age, so
-				// retiring them withholds samples it would accept, invisibly
-				// to `status`.
-				n, err := st.Refused(ctx, store.Events, before)
+				n, err := st.Refused(ctx, before)
 				if err != nil {
 					return stats, err
 				}
@@ -200,10 +186,7 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 			stats.Rejected += ack.EventsRejected
 		}
 
-		if err := st.MarkSent(ctx, store.Events, eventIDs); err != nil {
-			return stats, err
-		}
-		if err := st.MarkSent(ctx, store.Quota, quotaIDs); err != nil {
+		if err := st.MarkSent(ctx, eventIDs); err != nil {
 			return stats, err
 		}
 		if !unknownSent {
@@ -213,27 +196,25 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 
 		stats.Batches++
 		stats.Events += len(eventIDs)
-		stats.Quota += len(quotaIDs)
 
 		// A short batch means the queue is drained, unless this ack put rows
 		// back into it.
-		if len(eventIDs) < batchSize && len(quotaIDs) < batchSize && requeued == 0 {
+		if len(eventIDs) < batchSize && requeued == 0 {
 			return stats, nil
 		}
 	}
 }
 
-// wireBatch is schema.Batch with its events and quota already encoded, so
-// rows are not decoded and re-encoded on their way out of the archive.
+// wireBatch is schema.Batch with its events already encoded, so rows are not
+// decoded and re-encoded on their way out of the archive.
 //
-// It embeds the schema type rather than mirroring it: the two fields below
-// shadow Batch's own (encoding/json takes the shallowest field of a name), and
+// It embeds the schema type rather than mirroring it: the field below shadows
+// Batch's own (encoding/json takes the shallowest field of a name), and
 // everything else on the wire is schema.Batch's -- the type the privacy test
 // reads. TestWireBatchIsSchemaBatch enforces it.
 type wireBatch struct {
 	schema.Batch
 	Events []json.RawMessage `json:"events,omitempty"`
-	Quota  []json.RawMessage `json:"quota,omitempty"`
 }
 
 // ack is the server's reply to one batch, as the agent reads it.

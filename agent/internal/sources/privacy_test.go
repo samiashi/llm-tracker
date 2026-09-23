@@ -39,7 +39,6 @@ func jsonFields(t reflect.Type) []string {
 var wireTypes = map[string]any{
 	"Event":         schema.Event{},
 	"Usage":         schema.Usage{},
-	"QuotaSample":   schema.QuotaSample{},
 	"UnknownSource": schema.UnknownSource{},
 	"Batch":         schema.Batch{},
 	"Account":       schema.Account{},
@@ -64,21 +63,15 @@ func TestNoWireTypeCanCarryContent(t *testing.T) {
 		"input_tokens": true, "output_tokens": true, "cache_read_tokens": true,
 		"cache_write_5m_tokens": true, "cache_write_1h_tokens": true,
 		"reasoning_tokens": true, "web_search_calls": true, "web_fetch_calls": true,
-		// QuotaSample
-		"window_minutes": true, "used_percent": true, "resets_at": true,
-		"plan_type": true, "is_overage": true,
-		// Provider-assigned names for an allowance pool ("codex",
-		// "GPT-5.3-Codex-Spark"), not anything a user typed.
-		"limit_id": true, "limit_name": true,
 		// UnknownSource
 		"path": true, "hint": true, "size_bytes": true, "first_seen": true,
 		"status": true, "note": true,
 		// Batch
-		"hostname": true, "events": true, "quota": true,
+		"hostname": true, "events": true,
 		"unknown_sources": true, "unknown_complete": true, "accounts": true,
 		// Account. The email is personal data, carried deliberately so usage
 		// can be attributed to a colleague; it is an address, never content.
-		"ref": true, "email": true,
+		"ref": true, "email": true, "plan_type": true,
 	}
 
 	for name, zero := range wireTypes {

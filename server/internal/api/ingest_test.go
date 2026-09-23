@@ -308,8 +308,7 @@ func TestEveryListInABatchIsBounded(t *testing.T) {
 	}
 	for f := range reflect.TypeFor[schema.Batch]().Fields() {
 		name := jsonName(f)
-		// Not read since quota readings were dropped; remove with the field.
-		if f.Type.Kind() != reflect.Slice || name == "quota" {
+		if f.Type.Kind() != reflect.Slice {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {

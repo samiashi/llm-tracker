@@ -172,32 +172,6 @@ func (u Usage) TotalTokens() int64 {
 		u.CacheWrite5mTokens + u.CacheWrite1hTokens
 }
 
-// QuotaSample is a point-in-time reading of a subscription plan's remaining
-// allowance, from Codex's rate_limits block or Cowork's rate_limit_event.
-type QuotaSample struct {
-	V          int       `json:"v"`
-	ID         string    `json:"id"`
-	Source     Source    `json:"source"`
-	TS         time.Time `json:"ts"`
-	MachineID  string    `json:"machine_id"`
-	AccountRef string    `json:"account_ref,omitempty"`
-
-	// LimitID and LimitName identify the allowance pool. A provider runs
-	// several unrelated pools at once -- Codex reports a general "codex" pool,
-	// a per-model one ("codex_bengalfox", named "GPT-5.3-Codex-Spark") and a
-	// "premium" pool -- and without these, samples from different pools
-	// collapse into each other. Both are provider-assigned names for a billing
-	// bucket, never anything the user wrote.
-	LimitID   string `json:"limit_id,omitempty"`
-	LimitName string `json:"limit_name,omitempty"`
-
-	PlanType      string    `json:"plan_type,omitempty"`
-	WindowMinutes int       `json:"window_minutes,omitempty"`
-	UsedPercent   float64   `json:"used_percent"`
-	ResetsAt      time.Time `json:"resets_at,omitempty"`
-	IsOverage     bool      `json:"is_overage,omitempty"`
-}
-
 // UnknownSource reports an agent directory found on a machine that we have no
 // adapter for, so a harness shows up as "detected, unsupported" instead of
 // silently missing.
@@ -234,7 +208,6 @@ type Batch struct {
 	Hostname      string          `json:"hostname,omitempty"`
 	AgentVersion  string          `json:"agent_version"`
 	Events        []Event         `json:"events,omitempty"`
-	Quota         []QuotaSample   `json:"quota,omitempty"`
 	UnknownSource []UnknownSource `json:"unknown_sources,omitempty"`
 
 	// UnknownComplete marks UnknownSource as the machine's entire current set
@@ -278,8 +251,6 @@ type IngestAck struct {
 	EventsSkipped int `json:"events_skipped"`
 	// EventsRejected counts events dropped as implausible.
 	EventsRejected int `json:"events_rejected"`
-	QuotaStored    int `json:"quota_stored"`
-	UnknownStored  int `json:"unknown_stored"`
 	Unpriced       int `json:"unpriced"`
 
 	// RetentionFloor is the earliest day ingest accepts right now, so an agent

@@ -83,21 +83,6 @@ type codexTokenCount struct {
 		LastTokenUsage  codexTokenUsage  `json:"last_token_usage"`
 		TotalTokenUsage *codexTokenUsage `json:"total_token_usage"`
 	} `json:"info"`
-	RateLimits *struct {
-		Primary   *codexWindow `json:"primary"`
-		Secondary *codexWindow `json:"secondary"`
-		PlanType  string       `json:"plan_type"`
-		// LimitID names the allowance pool these windows belong to. Codex runs
-		// several at once, and a sample is meaningless without its pool.
-		LimitID   string `json:"limit_id"`
-		LimitName string `json:"limit_name"`
-	} `json:"rate_limits"`
-}
-
-type codexWindow struct {
-	UsedPercent   float64 `json:"used_percent"`
-	WindowMinutes int     `json:"window_minutes"`
-	ResetsAt      int64   `json:"resets_at"`
 }
 
 // fileCtx is the per-file state a usage line needs but does not carry. The
@@ -257,67 +242,25 @@ func (a Codex) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			if json.Unmarshal(l.Payload, &tc) != nil || tc.Type != "token_count" {
 				return
 			}
-			// Attributed by the line's own time: auth.json holds one account
-			// and switching overwrites it.
-			acct := c.AccountRefAt("openai", ts)
-
 			// last_token_usage is this response's own usage, not a running
 			// total. Token_count lines before a rollout's first usage record
 			// are responses an older CLI reported only this way.
-			if !fc.HasUsageRecord && tc.Info != nil {
-				u := tc.Info.LastTokenUsage
-				if u.InputTokens+u.OutputTokens > 0 {
-					nid := codexTokenCountID(tc.Info.TotalTokenUsage, u, path, l.Ordinal)
-					if ev, ok := codexEvent(c, fc, acct, nid, fc.SessionID, u, ts); ok {
-						c.emit(ev)
-					}
-				}
+			if fc.HasUsageRecord || tc.Info == nil {
+				return
 			}
-			if tc.RateLimits != nil {
-				emitCodexQuota(c, &tc, acct, ts)
+			u := tc.Info.LastTokenUsage
+			if u.InputTokens+u.OutputTokens == 0 {
+				return
+			}
+			// Attributed by the line's own time: auth.json holds one account
+			// and switching overwrites it.
+			acct := c.AccountRefAt("openai", ts)
+			nid := codexTokenCountID(tc.Info.TotalTokenUsage, u, path, l.Ordinal)
+			if ev, ok := codexEvent(c, fc, acct, nid, fc.SessionID, u, ts); ok {
+				c.emit(ev)
 			}
 		}
 	})
-}
-
-// emitCodexQuota records a token_count line's rate-limit windows.
-func emitCodexQuota(c *Ctx, tc *codexTokenCount, acct string, ts time.Time) {
-	rl := tc.RateLimits
-	limit := rl.LimitID
-	if limit == "" {
-		limit = "codex"
-	}
-	bucket := ts.Truncate(time.Hour).Unix()
-	for _, win := range []*codexWindow{rl.Primary, rl.Secondary} {
-		if win == nil {
-			continue
-		}
-		// A window that had reset by the line's own time is a copy from a
-		// fork's replayed history, and would pin a stale peak onto the hour
-		// it is stamped with.
-		resets := unixOrZero(win.ResetsAt)
-		if !resets.IsZero() && !resets.After(ts) {
-			continue
-		}
-		// Keyed on the pool and the window length, not on the JSON slot:
-		// Codex has moved windows between primary and secondary, and several
-		// pools report in the same hour.
-		c.emitQuota(schema.QuotaSample{
-			V: schema.Version,
-			ID: schema.MakeID(schema.SourceCodex,
-				fmt.Sprintf("q:%s:%s:%d:%d", acct, limit, win.WindowMinutes, bucket)),
-			Source:        schema.SourceCodex,
-			TS:            ts,
-			MachineID:     c.MachineID,
-			AccountRef:    acct,
-			PlanType:      rl.PlanType,
-			LimitID:       limit,
-			LimitName:     rl.LimitName,
-			WindowMinutes: win.WindowMinutes,
-			UsedPercent:   win.UsedPercent,
-			ResetsAt:      resets,
-		})
-	}
 }
 
 func codexEvent(c *Ctx, fc *fileCtx, acct, nativeID, sessionID string, u codexTokenUsage, ts time.Time) (schema.Event, bool) {

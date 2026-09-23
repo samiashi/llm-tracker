@@ -81,7 +81,7 @@ func row(t *testing.T, st *store.Store, src schema.Source, id string, collector 
 	}
 	if _, err := st.CommitFile(context.Background(), "", 0, 0, []store.Record{{
 		ID: id, TS: e.TS, TotalTokens: e.Usage.TotalTokens(), Collector: collector, Payload: e,
-	}}, nil, nil); err != nil {
+	}}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -94,7 +94,7 @@ func cursorFor(t *testing.T, st *store.Store, src schema.Source, home string) st
 		t.Fatalf("no adapter for %s", src)
 	}
 	path := sources.ScopeOf(ad, home).CursorPrefixes[0] + "session.jsonl"
-	if _, err := st.CommitFile(context.Background(), path, 10, 10, nil, nil, nil); err != nil {
+	if _, err := st.CommitFile(context.Background(), path, 10, 10, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -349,11 +349,11 @@ func TestARollbackIsReReadWhenRolledForward(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := st.CommitFile(ctx, "", 0, 0,
-		[]store.Record{{ID: id, TS: e.TS, TotalTokens: 1200, Collector: older, Payload: e}}, nil,
+		[]store.Record{{ID: id, TS: e.TS, TotalTokens: 1200, Collector: older, Payload: e}},
 		map[string]string{"opencode:message_watermark": "2"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.MarkSent(ctx, "event", []string{id}); err != nil {
+	if err := st.MarkSent(ctx, []string{id}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -362,7 +362,7 @@ func TestARollbackIsReReadWhenRolledForward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, payloads, err := st.Unsent(ctx, "event", 10)
+	_, payloads, err := st.Unsent(ctx, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +390,7 @@ func clineRow(t *testing.T, st *store.Store, native string, at time.Time, input 
 	}
 	if _, err := st.CommitFile(context.Background(), "", 0, 0, []store.Record{{
 		ID: e.ID, TS: e.TS, TotalTokens: e.Usage.TotalTokens(), Collector: 9, Payload: e,
-	}}, nil, nil); err != nil {
+	}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	return e.ID

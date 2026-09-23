@@ -134,7 +134,7 @@ func storeWith(t *testing.T, n int) *store.Store {
 		recs[i] = store.Record{ID: id, TS: time.Now(), TotalTokens: 10, Collector: 1,
 			Payload: schema.Event{ID: id, TS: time.Now()}}
 	}
-	if _, err := st.CommitFile(context.Background(), "", 0, 0, recs, nil, nil); err != nil {
+	if _, err := st.CommitFile(context.Background(), "", 0, 0, recs, nil); err != nil {
 		t.Fatal(err)
 	}
 	return st
@@ -142,7 +142,7 @@ func storeWith(t *testing.T, n int) *store.Store {
 
 func unsent(t *testing.T, st *store.Store) int {
 	t.Helper()
-	ids, _, err := st.Unsent(context.Background(), "event", 100)
+	ids, _, err := st.Unsent(context.Background(), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestRefusedRowsAreRequeuedOnlyOnAnExplicitNo(t *testing.T) {
 			}))
 			defer srv.Close()
 			st := storeWith(t, 2)
-			if _, err := st.Refused(context.Background(), "event", time.Now().Add(time.Hour)); err != nil {
+			if _, err := st.Refused(context.Background(), time.Now().Add(time.Hour)); err != nil {
 				t.Fatal(err)
 			}
 			c := New(srv.URL, "t", "v1.0.0", quietLog())
@@ -344,10 +344,10 @@ func TestRowsAboveALoweredFloorAreOfferedAgain(t *testing.T) {
 		recs = append(recs, store.Record{ID: d, TS: day(d), TotalTokens: 1, Collector: 1,
 			Payload: schema.Event{ID: d, TS: day(d)}})
 	}
-	if _, err := st.CommitFile(ctx, "", 0, 0, recs, nil, nil); err != nil {
+	if _, err := st.CommitFile(ctx, "", 0, 0, recs, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Refused(ctx, "event", day("2026-06-01")); err != nil {
+	if _, err := st.Refused(ctx, day("2026-06-01")); err != nil {
 		t.Fatal(err)
 	}
 

@@ -36,7 +36,7 @@ func TestTailerLeavesPartialTrailingLine(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The caller commits the cursor, as walkJSONL does.
-		if _, err := st.CommitFile(ctx, p, offset, size, nil, nil, nil); err != nil {
+		if _, err := st.CommitFile(ctx, p, offset, size, nil, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -72,7 +72,7 @@ func TestTailerRestartsOnTruncation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := st.CommitFile(ctx, p, offset, size, nil, nil, nil); err != nil {
+		if _, err := st.CommitFile(ctx, p, offset, size, nil, nil); err != nil {
 			t.Fatal(err)
 		}
 		return n
@@ -87,22 +87,6 @@ func TestTailerRestartsOnTruncation(t *testing.T) {
 	os.WriteFile(p, []byte("{\"n\":9}\n"), 0o600) // replaced, now shorter
 	if got := count(); got != 1 {
 		t.Fatalf("after truncation read %d, want 1 -- the cursor must reset", got)
-	}
-}
-
-func TestQuotaBucketKeepsPeak(t *testing.T) {
-	c := &Ctx{}
-	for _, pct := range []float64{12, 61, 40} {
-		c.emitQuota(schema.QuotaSample{ID: "bucket-1", UsedPercent: pct})
-	}
-	c.emitQuota(schema.QuotaSample{ID: "bucket-2", UsedPercent: 5})
-
-	_, quota := c.Drain()
-	if len(quota) != 2 {
-		t.Fatalf("got %d samples, want 2 buckets", len(quota))
-	}
-	if quota[0].UsedPercent != 61 {
-		t.Fatalf("bucket kept %.0f%%, want the peak 61%%", quota[0].UsedPercent)
 	}
 }
 
@@ -169,7 +153,7 @@ func collectFile(t *testing.T, a Adapter, rel, body string) []schema.Event {
 	if _, err := a.Collect(context.Background(), &Ctx{Store: st, MachineID: "m", Home: home}); err != nil {
 		t.Fatal(err)
 	}
-	_, payloads, err := st.Unsent(context.Background(), "event", 1000)
+	_, payloads, err := st.Unsent(context.Background(), 1000)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
@@ -84,7 +83,7 @@ func (h *codexHome) collect(t *testing.T, c *Ctx) {
 
 func storedEvents(t *testing.T, st *store.Store) []schema.Event {
 	t.Helper()
-	_, payloads, err := st.Unsent(context.Background(), "event", 10000)
+	_, payloads, err := st.Unsent(context.Background(), 10000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,23 +94,6 @@ func storedEvents(t *testing.T, st *store.Store) []schema.Event {
 			t.Fatal(err)
 		}
 		out = append(out, e)
-	}
-	return out
-}
-
-func storedQuota(t *testing.T, st *store.Store) []schema.QuotaSample {
-	t.Helper()
-	_, payloads, err := st.Unsent(context.Background(), "quota", 10000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := make([]schema.QuotaSample, 0, len(payloads))
-	for _, raw := range payloads {
-		var q schema.QuotaSample
-		if err := json.Unmarshal(raw, &q); err != nil {
-			t.Fatal(err)
-		}
-		out = append(out, q)
 	}
 	return out
 }
@@ -203,24 +185,6 @@ func TestCodexKeysOnPositionWithoutARunningTotal(t *testing.T) {
 	}
 }
 
-func TestCodexSkipsARateLimitWindowThatHadAlreadyReset(t *testing.T) {
-	stamped := parseTS("2026-09-20T11:00:00Z")
-	line := fmt.Sprintf(`{"timestamp":"2026-09-20T11:00:00Z","type":"event_msg","ordinal":3,`+
-		`"payload":{"type":"token_count","rate_limits":{"limit_id":"codex",`+
-		`"primary":{"used_percent":97,"window_minutes":300,"resets_at":%d},`+
-		`"secondary":{"used_percent":40,"window_minutes":10080,"resets_at":%d}}}}`,
-		stamped.Add(-time.Hour).Unix(), stamped.Add(48*time.Hour).Unix())
-
-	h := newCodexHome(t)
-	h.write(t, liveDir+parentRollout, line)
-	h.collect(t, nil)
-
-	q := storedQuota(t, h.st)
-	if len(q) != 1 || q[0].WindowMinutes != 10080 {
-		t.Fatalf("stored %+v, want only the weekly window that had not reset", q)
-	}
-}
-
 // A rollout resumed across a Codex upgrade reports its early responses only
 // through token_count; they count whether one pass reads the file or two.
 func TestCodexKeepsResponsesReportedBeforeTheFirstUsageRecord(t *testing.T) {
@@ -290,12 +254,7 @@ func TestCodexTokenCountResponsesCarryTheirSession(t *testing.T) {
 
 func TestCodexAttributesUsageToTheAccountActiveAtTheTime(t *testing.T) {
 	h := newCodexHome(t)
-	h.write(t, liveDir+parentRollout, fmt.Sprintf(`{"timestamp":"2026-09-20T10:00:05Z","type":"event_msg","ordinal":5,`+
-		`"payload":{"type":"token_count","info":{`+
-		`"last_token_usage":{"input_tokens":100,"output_tokens":10,"total_tokens":110},`+
-		`"total_token_usage":{"input_tokens":100,"output_tokens":10,"total_tokens":110}},`+
-		`"rate_limits":{"primary":{"used_percent":5,"window_minutes":300,"resets_at":%d}}}}`,
-		parseTS("2026-09-20T12:00:00Z").Unix()))
+	h.write(t, liveDir+parentRollout, tokenCount("2026-09-20T10:00:05Z", 5, 100, 100))
 	h.collect(t, &Ctx{
 		Accounts: map[string]*schema.Account{"openai": {Provider: "openai", Ref: "openai:work"}},
 		AccountHistory: []store.AccountWindow{
@@ -306,9 +265,6 @@ func TestCodexAttributesUsageToTheAccountActiveAtTheTime(t *testing.T) {
 
 	if evs := storedEvents(t, h.st); len(evs) != 1 || evs[0].AccountRef != "openai:personal" {
 		t.Fatalf("got %+v, want the usage credited to the account active on the day", evs)
-	}
-	if q := storedQuota(t, h.st); len(q) != 1 || q[0].AccountRef != "openai:personal" {
-		t.Fatalf("got %+v, want the quota sample credited to the same account", q)
 	}
 }
 
@@ -395,7 +351,7 @@ func TestCodexEventIdSurvivesArchiving(t *testing.T) {
 		if _, err := (Codex{}).Collect(context.Background(), c); err != nil {
 			t.Fatal(err)
 		}
-		_, payloads, err := st.Unsent(context.Background(), "event", 100)
+		_, payloads, err := st.Unsent(context.Background(), 100)
 		if err != nil {
 			t.Fatal(err)
 		}

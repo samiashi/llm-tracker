@@ -36,7 +36,7 @@ func TestContinueKeepsRecordsInTheSameSecondDistinct(t *testing.T) {
 	if _, err := (ContinueDev{}).Collect(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
-	ids, _, err := st.Unsent(context.Background(), "event", 100)
+	ids, _, err := st.Unsent(context.Background(), 100)
 	if err != nil {
 		t.Fatal(err)
 	}

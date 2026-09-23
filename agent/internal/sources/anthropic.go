@@ -4,12 +4,10 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
 )
@@ -66,14 +64,6 @@ type anthropicLine struct {
 			Iterations []anthropicIteration `json:"iterations"`
 		} `json:"usage"`
 	} `json:"message"`
-
-	// Cowork reports subscription quota out of band from token usage.
-	RateLimitInfo *struct {
-		ResetsAt       int64   `json:"resetsAt"`
-		RateLimitType  string  `json:"rateLimitType"`
-		Utilization    float64 `json:"utilization"`
-		IsUsingOverage bool    `json:"isUsingOverage"`
-	} `json:"rate_limit_info"`
 }
 
 // anthropicTokens is the token part of a usage object, shared by the response
@@ -359,26 +349,6 @@ func (a Cowork) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			for _, a := range l.abandonedAttempts(ev) {
 				c.emit(a)
 			}
-			return
-		}
-		if l.Type == "rate_limit_event" && l.RateLimitInfo != nil {
-			// Bucketed hourly: this is a gauge, not an event stream.
-			bucket := parseTS(l.Timestamp).Truncate(time.Hour).Unix()
-			c.emitQuota(schema.QuotaSample{
-				V:          schema.Version,
-				ID:         schema.MakeID(schema.SourceCowork, fmt.Sprintf("q:%s:%d", acct, bucket)),
-				Source:     schema.SourceCowork,
-				TS:         parseTS(l.Timestamp),
-				MachineID:  c.MachineID,
-				AccountRef: acct,
-				// One pool, but named anyway so every source groups on the
-				// same key rather than on the absence of one.
-				LimitID:     "cowork",
-				UsedPercent: l.RateLimitInfo.Utilization,
-				ResetsAt:    unixOrZero(l.RateLimitInfo.ResetsAt),
-				IsOverage:   l.RateLimitInfo.IsUsingOverage,
-				PlanType:    l.RateLimitInfo.RateLimitType,
-			})
 		}
 	})
 }

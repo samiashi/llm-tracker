@@ -85,7 +85,7 @@ func cmdProbe(home, name string) error {
 	var total int64
 	var distinct int
 	var sample *schema.Event
-	if rerr := st.EachPayload(context.Background(), store.Events, func(raw json.RawMessage) error {
+	if rerr := st.EachPayload(context.Background(), func(raw json.RawMessage) error {
 		var e schema.Event
 		if json.Unmarshal(raw, &e) == nil {
 			if sample == nil {
@@ -100,13 +100,12 @@ func cmdProbe(home, name string) error {
 		return rerr
 	}
 
-	parsed := strconv.Itoa(c.Totals.Events)
-	if distinct != c.Totals.Events {
+	parsed := strconv.Itoa(c.Emitted)
+	if distinct != c.Emitted {
 		parsed += fmt.Sprintf(" (%d distinct)", distinct)
 	}
 	fmt.Printf("\nfiles matched: %d (%s read)\n", res.Files, humanBytes(res.BytesRead))
-	fmt.Printf("events parsed: %s\nquota samples: %d\nerrors:        %d\n",
-		parsed, c.Totals.Quota, len(res.Errors))
+	fmt.Printf("events parsed: %s\nerrors:        %d\n", parsed, len(res.Errors))
 	if err != nil {
 		fmt.Println("adapter error:", err)
 	}

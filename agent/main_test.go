@@ -79,7 +79,7 @@ func seed(t *testing.T, dataDir string, events ...schema.Event) {
 		recs = append(recs, store.Record{ID: e.ID, TS: e.TS, TotalTokens: e.Usage.TotalTokens(),
 			Collector: 1, Payload: e})
 	}
-	if _, err := st.CommitFile(context.Background(), "", 0, 0, recs, nil, nil); err != nil {
+	if _, err := st.CommitFile(context.Background(), "", 0, 0, recs, nil); err != nil {
 		t.Fatal(err)
 	}
 }
