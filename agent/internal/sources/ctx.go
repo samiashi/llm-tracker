@@ -11,7 +11,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/samiashi/llm-tracker/agent/internal/identity"
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
 )
@@ -25,7 +24,7 @@ type Ctx struct {
 	// Accounts is keyed by provider ("anthropic", "openai") and holds the
 	// account active right now: AccountRefAt's fallback for a provider with
 	// no recorded switch.
-	Accounts map[string]*identity.Account
+	Accounts map[string]*schema.Account
 	// AccountHistory is every observed switch, oldest first, so an event can
 	// be attributed by its own timestamp.
 	AccountHistory []store.AccountWindow

@@ -230,7 +230,7 @@ func Run(ctx context.Context, st *store.Store, home string, log *slog.Logger) (*
 		return nil, err
 	}
 
-	accounts := map[string]*identity.Account{}
+	accounts := map[string]*schema.Account{}
 	for _, a := range identity.All() {
 		accounts[a.Provider] = a
 		// Recorded before anything is read, so this pass's events are

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/samiashi/llm-tracker/agent/internal/identity"
 	"github.com/samiashi/llm-tracker/agent/internal/sources"
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
@@ -72,7 +71,7 @@ func cmdProbe(home, name string) error {
 	}
 	defer st.Close()
 
-	c := &sources.Ctx{Store: st, MachineID: "probe", Home: home, Accounts: map[string]*identity.Account{}}
+	c := &sources.Ctx{Store: st, MachineID: "probe", Home: home, Accounts: map[string]*schema.Account{}}
 	res, err := ad.Collect(context.Background(), c)
 	if _, cerr := c.CommitPending(context.Background()); cerr != nil && err == nil {
 		err = cerr

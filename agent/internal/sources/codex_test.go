@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samiashi/llm-tracker/agent/internal/identity"
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
 )
@@ -298,7 +297,7 @@ func TestCodexAttributesUsageToTheAccountActiveAtTheTime(t *testing.T) {
 		`"rate_limits":{"primary":{"used_percent":5,"window_minutes":300,"resets_at":%d}}}}`,
 		parseTS("2026-09-20T12:00:00Z").Unix()))
 	h.collect(t, &Ctx{
-		Accounts: map[string]*identity.Account{"openai": {Provider: "openai", Ref: "openai:work"}},
+		Accounts: map[string]*schema.Account{"openai": {Provider: "openai", Ref: "openai:work"}},
 		AccountHistory: []store.AccountWindow{
 			{Provider: "openai", Ref: "openai:personal", ObservedAt: parseTS("2026-09-01T00:00:00Z")},
 			{Provider: "openai", Ref: "openai:work", ObservedAt: parseTS("2026-09-21T00:00:00Z")},

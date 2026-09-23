@@ -82,9 +82,7 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 
 	accounts := make([]schema.Account, 0, 2)
 	for _, a := range identity.All() {
-		accounts = append(accounts, schema.Account{
-			Ref: a.Ref, Provider: a.Provider, Email: a.Email, PlanType: a.PlanType,
-		})
+		accounts = append(accounts, *a)
 	}
 
 	unknown, err := st.AllUnknown(ctx)

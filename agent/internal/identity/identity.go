@@ -19,20 +19,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-)
 
-// Account identifies one provider login on this machine.
-//
-// Email is carried deliberately: per-person attribution is the point of a team
-// dashboard. It is not the only personal data sent -- the hostname, project
-// paths, and harness paths that name the home directory go too; schema.Batch
-// is the complete list.
-type Account struct {
-	Ref      string `json:"ref"`
-	Provider string `json:"provider"`
-	Email    string `json:"email,omitempty"`
-	PlanType string `json:"plan_type,omitempty"`
-}
+	"github.com/samiashi/llm-tracker/schema"
+)
 
 type metaStore interface {
 	Meta(ctx context.Context, k string) (string, error)
@@ -77,7 +66,7 @@ var platformUUID = regexp.MustCompile(`"IOPlatformUUID"\s*=\s*"([^"]+)"`)
 
 // DetectClaude reads the active Anthropic account from ~/.claude.json, not the
 // Keychain: reading that triggers a consent prompt.
-func DetectClaude() (*Account, error) {
+func DetectClaude() (*schema.Account, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -100,7 +89,7 @@ func DetectClaude() (*Account, error) {
 	if a.AccountUUID == "" {
 		return nil, nil
 	}
-	return &Account{
+	return &schema.Account{
 		Ref:      "anthropic:" + a.AccountUUID,
 		Provider: "anthropic",
 		Email:    a.EmailAddress,
@@ -113,7 +102,7 @@ func DetectClaude() (*Account, error) {
 // The plan type lives in the id_token's claims, so the JWT payload is decoded.
 // The signature is never verified and the token never sent: it only names the
 // account that is logged in.
-func DetectCodex() (*Account, error) {
+func DetectCodex() (*schema.Account, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -134,7 +123,7 @@ func DetectCodex() (*Account, error) {
 	if doc.Tokens.AccountID == "" {
 		return nil, nil
 	}
-	acct := &Account{
+	acct := &schema.Account{
 		Ref:      "openai:" + doc.Tokens.AccountID,
 		Provider: "openai",
 	}
@@ -171,8 +160,8 @@ func decodeJWTClaims(token string) map[string]any {
 
 // All returns every account detectable on this machine. A missing or
 // unreadable config is not an error: people have one harness and not another.
-func All() []*Account {
-	var out []*Account
+func All() []*schema.Account {
+	var out []*schema.Account
 	if a, err := DetectClaude(); err == nil && a != nil {
 		out = append(out, a)
 	}
