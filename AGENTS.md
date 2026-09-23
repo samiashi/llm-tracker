@@ -55,10 +55,11 @@ wrong numbers, and the comment above the code says which.
 4. **`schema.Event` has no field for message content** — no prompts,
    completions, file contents, diffs or tool arguments. That is the privacy
    boundary and it is enforced by the type. `agent/internal/sources/privacy_test.go`
-   fails if a new field appears on any wire type (`Event`, `Usage`,
-   `UnknownSource`, `Batch`, `Account`, `EnrollRequest`) -- it
-   reads the _type_, so a field tagged `omitempty` cannot slip past by being
-   unset.
+   walks every type an upload (`Batch`) or an enrolment (`EnrollRequest`) can
+   reach and holds each to its own list of keys, failing on an unlisted key, a
+   struct with no list, or an interface, map or self-marshalling type at any
+   depth -- it reads the _type_, so a field tagged `omitempty` cannot slip past
+   by being unset.
 5. **Aggregate queries over the reporting window read the `event_daily` view,
    never `event` directly.** The view unions `event_day` -- the live events
    summed per day and rollup key, kept by triggers on `event` -- with pruned-day
