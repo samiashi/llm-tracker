@@ -278,7 +278,8 @@ func TestEveryMatrixDimensionRuns(t *testing.T) {
 }
 
 // Widening retention -- prune at 30 days, then at 90 -- must not re-open days
-// already inside a rollup.
+// already inside a rollup. The wider prune has a day of its own to roll up,
+// a straggler delivered while pruning was off, so it does write a floor.
 func TestRetentionFloorNeverMovesBackwards(t *testing.T) {
 	d := newDB(t)
 	ctx := context.Background()
@@ -299,12 +300,17 @@ func TestRetentionFloorNeverMovesBackwards(t *testing.T) {
 	if after != before30 {
 		t.Fatalf("floor = %q, want %q", after, before30)
 	}
-	first, _ := d.Totals(ctx, Window{From: "2000-01-01"})
 
-	// Nothing is older than 90 days, so this prune rolls up nothing.
-	before90 := time.Now().AddDate(0, 0, -90).UTC().Format("2006-01-02")
-	if _, err := d.Prune(ctx, before90); err != nil {
+	late := ev("late", 500, schema.CostBilled)
+	late.TS = time.Now().AddDate(0, 0, -120)
+	ingest(t, d, late)
+	first, err := d.Totals(ctx, Window{From: "2000-01-01"})
+	if err != nil {
 		t.Fatal(err)
+	}
+	before90 := time.Now().AddDate(0, 0, -90).UTC().Format("2006-01-02")
+	if res, err := d.Prune(ctx, before90); err != nil || res.DaysRolled != 1 {
+		t.Fatalf("the wider prune rolled up %v days (%v), want the straggler's", res, err)
 	}
 	floor, err := d.RetentionFloor(ctx)
 	if err != nil {
@@ -321,7 +327,10 @@ func TestRetentionFloorNeverMovesBackwards(t *testing.T) {
 	if res.EventsSkipped != 1 {
 		t.Fatalf("a rolled-up event was accepted again: skipped=%d", res.EventsSkipped)
 	}
-	second, _ := d.Totals(ctx, Window{From: "2000-01-01"})
+	second, err := d.Totals(ctx, Window{From: "2000-01-01"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if second.TotalTokens != first.TotalTokens {
 		t.Fatalf("totals changed after a resend: %d -> %d",
 			first.TotalTokens, second.TotalTokens)

@@ -248,3 +248,49 @@ func TestAMergeMidBatchPricesTheStoredRow(t *testing.T) {
 		}
 	}
 }
+
+// Invariant 1 through every arm of the upsert's WHERE: a reading that is news
+// only for a per-call counter or a blank field must not lower the stored
+// total, and a longer one must not lower the per-call counters. Read from
+// the columns themselves: storedEvent sums the split, which cannot see
+// total_tokens.
+func TestNoArmOfTheUpsertLowersAStoredCount(t *testing.T) {
+	type counts struct{ total, input, searches, fetches int64 }
+	read := func(d *DB) (c counts) {
+		t.Helper()
+		if err := d.read.QueryRowContext(context.Background(), `
+			SELECT total_tokens, input_tokens, web_search_calls, web_fetch_calls
+			FROM event WHERE id = 'x'`).Scan(&c.total, &c.input, &c.searches, &c.fetches); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	reading := func(in, searches, fetches int64, effort string) schema.Event {
+		e := ev("x", in, schema.CostBilled)
+		e.Usage.WebSearchCalls, e.Usage.WebFetchCalls, e.Effort = searches, fetches, effort
+		return e
+	}
+	for _, tc := range []struct {
+		name          string
+		first, second schema.Event
+		want          counts
+	}{
+		{"a shorter reading with one more search",
+			reading(1_000, 0, 0, ""), reading(500, 1, 0, ""), counts{1_000, 1_000, 1, 0}},
+		{"a shorter reading with one more fetch",
+			reading(1_000, 0, 0, ""), reading(500, 0, 1, ""), counts{1_000, 1_000, 0, 1}},
+		{"a shorter reading that fills in the effort",
+			reading(1_000, 0, 0, ""), reading(500, 0, 0, "high"), counts{1_000, 1_000, 0, 0}},
+		{"a longer reading that did not parse the calls",
+			reading(1_000, 3, 2, ""), reading(2_000, 0, 0, ""), counts{2_000, 2_000, 3, 2}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newDB(t)
+			ingest(t, d, tc.first)
+			ingest(t, d, tc.second)
+			if got := read(d); got != tc.want {
+				t.Fatalf("stored %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
