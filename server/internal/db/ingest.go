@@ -2,8 +2,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
-	"strings"
 	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
@@ -301,65 +299,4 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 	}
 
 	return res, tx.Commit()
-}
-
-// priceMerged prices each merged row from its stored columns, not from the
-// reading merged into it: a merge keeps the larger tool-call counts and may
-// keep the stored split, and a cost for columns not stored disagrees with the
-// columns that are. Native figures are the harness's own, and are left alone.
-func (d *DB) priceMerged(ctx context.Context, tx *sql.Tx, ids []string) error {
-	// Read in chunks, then written: every Rows open in a transaction costs
-	// database/sql a goroutine, and one query per row doubles ingest time.
-	const chunk = 500
-	for len(ids) > 0 {
-		n := min(len(ids), chunk)
-		args := make([]any, n)
-		for i, id := range ids[:n] {
-			args[i] = id
-		}
-		ids = ids[n:]
-
-		stale, err := func() ([]repricing, error) {
-			rows, err := tx.QueryContext(ctx,
-				selectPriced+` AND id IN (?`+strings.Repeat(", ?", n-1)+`)`, args...)
-			if err != nil {
-				return nil, err
-			}
-			defer rows.Close()
-			var out []repricing
-			for rows.Next() {
-				r, stale, err := d.scanStale(rows)
-				if err != nil {
-					return nil, err
-				}
-				if stale {
-					out = append(out, r)
-				}
-			}
-			return out, rows.Err()
-		}()
-		if err != nil {
-			return err
-		}
-		for _, r := range stale {
-			if _, err := tx.ExecContext(ctx,
-				`UPDATE event SET cost_usd = ?, cost_source = ? WHERE id = ?`,
-				r.cost, r.source, r.id); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// ingestFloorTx is the day ingest refuses events below, or "" for none: the
-// retention floor while this server prunes, and never below the legacy floor,
-// whose rollups hold no ids to tell a re-send from a new event.
-func (d *DB) ingestFloorTx(ctx context.Context, tx *sql.Tx) (string, error) {
-	legacy, err := settingTx(ctx, tx, legacyFloorKey)
-	if err != nil || !d.Pruning {
-		return legacy, err
-	}
-	floor, err := settingTx(ctx, tx, retentionFloorKey)
-	return max(floor, legacy), err
 }

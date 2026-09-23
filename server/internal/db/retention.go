@@ -46,24 +46,6 @@ const (
 	legacyFloorKey = "legacy_rollup_floor"
 )
 
-// EarliestRawDay is the first day from which every day is answerable from
-// individual events, or "" when there are none.
-//
-// After the last rolled-up day, not merely the first raw one: a late event
-// stored beside a day's rollup would otherwise pull the heatmap into days it
-// holds a sliver of, and it would read low beside the totals.
-func (d *DB) EarliestRawDay(ctx context.Context) (string, error) {
-	var v sql.NullString
-	if err := d.read.QueryRowContext(ctx, `
-		SELECT MAX(first, COALESCE(after, first)) FROM (
-		  SELECT (SELECT MIN(day) FROM event) AS first,
-		         (SELECT date(MAX(day), '+1 day') FROM daily_rollup) AS after)`,
-	).Scan(&v); err != nil {
-		return "", err
-	}
-	return v.String, nil
-}
-
 // RetentionFloor returns the day before which a prune deleted raw events, or
 // "" if nothing has been pruned.
 func (d *DB) RetentionFloor(ctx context.Context) (string, error) {
@@ -196,4 +178,36 @@ func raiseFloor(ctx context.Context, tx *sql.Tx, key, before string) error {
 		 ON CONFLICT(key) DO UPDATE SET value = MAX(excluded.value, setting.value)`,
 		key, before)
 	return err
+}
+
+// ingestFloorTx is the day ingest refuses events below, or "" for none: the
+// retention floor while this server prunes, and never below the legacy floor,
+// whose rollups hold no ids to tell a re-send from a new event.
+func (d *DB) ingestFloorTx(ctx context.Context, tx *sql.Tx) (string, error) {
+	legacy, err := settingTx(ctx, tx, legacyFloorKey)
+	if err != nil || !d.Pruning {
+		return legacy, err
+	}
+	floor, err := settingTx(ctx, tx, retentionFloorKey)
+	return max(floor, legacy), err
+}
+
+// DetailFrom is the first day with per-event detail, or "" if nothing was
+// ever pruned. Days before it survive only as daily rollups, with no hours to
+// show, and the dashboard labels them rather than drawing them as idle. The
+// floor alone never moves back, so it would go on labelling days that agents
+// have since re-delivered.
+func (d *DB) DetailFrom(ctx context.Context) (string, error) {
+	floor, err := d.RetentionFloor(ctx)
+	if err != nil || floor == "" {
+		return "", err
+	}
+	first, err := d.EarliestRawDay(ctx)
+	if err != nil {
+		return "", err
+	}
+	if first != "" && first < floor {
+		return first, nil
+	}
+	return floor, nil
 }

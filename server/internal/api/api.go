@@ -2,7 +2,6 @@
 package api
 
 import (
-	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -245,7 +244,7 @@ func (s *Server) handleHeatmap(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, "heatmap", err)
 		return
 	}
-	from, err := s.detailFrom(r.Context())
+	from, err := s.DB.DetailFrom(r.Context())
 	if err != nil {
 		s.writeInternal(w, "heatmap", err)
 		return
@@ -259,26 +258,6 @@ func (s *Server) handleHeatmap(w http.ResponseWriter, r *http.Request) {
 		// that visible.
 		UTCOffsetMinutes int `json:"utc_offset_minutes"`
 	}{cells, from, offset})
-}
-
-// detailFrom is the first day with per-event detail, or "" if nothing was
-// ever pruned. Days before it survive only as daily rollups, with no hours to
-// show, and the dashboard labels them rather than drawing them as idle. The
-// floor alone never moves back, so it would go on labelling days that agents
-// have since re-delivered.
-func (s *Server) detailFrom(ctx context.Context) (string, error) {
-	floor, err := s.DB.RetentionFloor(ctx)
-	if err != nil || floor == "" {
-		return "", err
-	}
-	first, err := s.DB.EarliestRawDay(ctx)
-	if err != nil {
-		return "", err
-	}
-	if first != "" && first < floor {
-		return first, nil
-	}
-	return floor, nil
 }
 
 func (s *Server) handleTopSessions(w http.ResponseWriter, r *http.Request) {

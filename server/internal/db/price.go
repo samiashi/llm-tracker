@@ -70,17 +70,6 @@ func pricedValues(e *schema.Event) []any {
 	return out
 }
 
-// RollupsBefore reports the day after the last rolled-up day, or "" when
-// nothing is rolled up. A rollup's cost is frozen at whatever the table said
-// the night it was pruned -- it keeps sums, not the per-event dimensions
-// pricing needs -- so a reprice is split there.
-func (d *DB) RollupsBefore(ctx context.Context) (string, error) {
-	var day sql.NullString
-	err := d.read.QueryRowContext(ctx,
-		`SELECT date(MAX(day), '+1 day') FROM daily_rollup`).Scan(&day)
-	return day.String, err
-}
-
 // repriceBatch bounds each write transaction reprice takes, so ingest waits
 // milliseconds for the lock rather than the whole pass.
 const repriceBatch = 1_000
@@ -198,4 +187,53 @@ func (d *DB) applyReprice(ctx context.Context, batch []repricing) (int, error) {
 		}
 	}
 	return n, tx.Commit()
+}
+
+// priceMerged prices each merged row from its stored columns, not from the
+// reading merged into it: a merge keeps the larger tool-call counts and may
+// keep the stored split, and a cost for columns not stored disagrees with the
+// columns that are. Native figures are the harness's own, and are left alone.
+func (d *DB) priceMerged(ctx context.Context, tx *sql.Tx, ids []string) error {
+	// Read in chunks, then written: every Rows open in a transaction costs
+	// database/sql a goroutine, and one query per row doubles ingest time.
+	const chunk = 500
+	for len(ids) > 0 {
+		n := min(len(ids), chunk)
+		args := make([]any, n)
+		for i, id := range ids[:n] {
+			args[i] = id
+		}
+		ids = ids[n:]
+
+		stale, err := func() ([]repricing, error) {
+			rows, err := tx.QueryContext(ctx,
+				selectPriced+` AND id IN (?`+strings.Repeat(", ?", n-1)+`)`, args...)
+			if err != nil {
+				return nil, err
+			}
+			defer rows.Close()
+			var out []repricing
+			for rows.Next() {
+				r, stale, err := d.scanStale(rows)
+				if err != nil {
+					return nil, err
+				}
+				if stale {
+					out = append(out, r)
+				}
+			}
+			return out, rows.Err()
+		}()
+		if err != nil {
+			return err
+		}
+		for _, r := range stale {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE event SET cost_usd = ?, cost_source = ? WHERE id = ?`,
+				r.cost, r.source, r.id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
