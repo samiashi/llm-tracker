@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { api, describeFailure, MATRIX_ROWS } from "@/api";
 import type { Filter, Group } from "@/api";
 import { change, loadDashboard, ratePerMillion } from "@/dashboard";
@@ -48,7 +48,11 @@ export default function App() {
     return () => window.clearInterval(t);
   }, []);
 
-  const filter = resolve(intent, clock);
+  // Rebuilt only when a value in it changes, not on every tick of the clock:
+  // the cards are memoised, and a new object each tick would redraw them all.
+  const { from, to, person } = resolve(intent, clock);
+  const filter = useMemo(() => ({ from, to, person }), [from, to, person]);
+  const setPerson = useCallback((p?: string) => setIntent((i) => ({ ...i, person: p })), []);
   // The viewer's offset, for saying where a UTC day starts on their clock.
   const localOffset = -new Date(clock).getTimezoneOffset();
   const dayStart = utcMidnightAt(localOffset);
@@ -86,10 +90,9 @@ export default function App() {
 
   const stale = updatedAt !== null && clock - updatedAt > STALE_MS;
   const failed = data?.failed ?? [];
-  const setPerson = (person?: string) => setIntent((i) => ({ ...i, person }));
   // Typed dates go through resolve, as a link's do, which puts them in order.
-  const setRange = (from: string, to: string) => {
-    const r = resolve({ from, to }, clock);
+  const setRange = (start: string, end: string) => {
+    const r = resolve({ from: start, to: end }, clock);
     setIntent((i) => ({ person: i.person, from: r.from, to: r.to }));
   };
   const floor = isoAt(clock, MAX_DAYS - 1);
@@ -156,7 +159,7 @@ export default function App() {
           max={filter.to}
           aria-label="From date"
           aria-describedby={tzId}
-          onCommit={(from) => setRange(from, filter.to)}
+          onCommit={(day) => setRange(day, filter.to)}
         />
         <span className="sep">→</span>
         <DateBox
@@ -167,7 +170,7 @@ export default function App() {
           max={today}
           aria-label="To date"
           aria-describedby={tzId}
-          onCommit={(to) => setRange(filter.from, to)}
+          onCommit={(day) => setRange(filter.from, day)}
         />
         <span
           className="tz"
@@ -223,7 +226,12 @@ function LoadFailure({
   );
 }
 
-function Dashboard({
+/**
+ * The cards. Memoised, since the page re-renders every clock tick while its
+ * figures change only with a load: every chart redrawn is its entry
+ * animation replayed.
+ */
+const Dashboard = memo(function Dashboard({
   data,
   filter,
   setPerson,
@@ -554,4 +562,4 @@ function Dashboard({
       )}
     </>
   );
-}
+});

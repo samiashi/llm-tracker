@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import App from "@/App";
 import type { Totals } from "@/api";
 import { utcMidnightAt } from "@/format";
+import { drawn } from "./recharts";
 
 vi.mock("recharts", async (real) => (await import("./recharts")).rechartsDouble(real));
 
@@ -714,6 +715,21 @@ describe("relative times", () => {
     await loaded();
     const lastSeen = card("Most expensive sessions").querySelector("tbody td:last-child");
     expect(lastSeen?.textContent).toBe("1m ago");
+  });
+
+  // A chart handed new props restarts its 1.5-second entry animation, so a
+  // tick that re-rendered the cards replayed it on every chart, every ten
+  // seconds, and cost the whole page's render each time.
+  it("redraws no chart when only the clock moves", async () => {
+    const tick = clockTicks();
+    vi.stubGlobal("fetch", mockFetch());
+    render(<App />);
+    await loaded();
+    const charts = drawn.length;
+    expect(charts).toBeGreaterThan(0);
+    tick(10_000);
+    expect(screen.getByText("updated 10s ago")).toBeTruthy();
+    expect(drawn.length).toBe(charts);
   });
 
   // A page that polls every minute otherwise reads as frozen between polls.
