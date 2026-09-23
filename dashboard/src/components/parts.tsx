@@ -2,6 +2,7 @@ import { useCallback, useId, useRef, useSyncExternalStore, type ReactNode } from
 import { exact } from "@/format";
 import { cardId, closeCard, openCard, useExpandedCard } from "@/expanded";
 import type { Group } from "@/api";
+import type { Change } from "@/dashboard";
 
 /**
  * Stands in for a card or tile whose request failed. Its empty state would say
@@ -235,9 +236,6 @@ export function More({ onMore, children }: { onMore?: () => void; children: Reac
     </button>
   );
 }
-
-/** A change against the prior window, or a note on why there is no honest percentage. */
-export type Change = { window: string } & ({ pct: number } | { note: string });
 
 export function Tile({
   label,
