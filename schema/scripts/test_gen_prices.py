@@ -77,9 +77,9 @@ class GenPricesTest(unittest.TestCase):
             self.check(raw)
 
     def test_missing_claude_cache_writes_fall_back_to_the_published_multipliers(self):
-        r = gen.rate({**spec("bedrock", 3, 15, 0.3), "_name": "anthropic.claude-x"})
+        r = gen.rate("anthropic.claude-x", spec("bedrock", 3, 15, 0.3))
         self.assertEqual((r["cache_write_5m"], r["cache_write_1h"]), (3.75, 6.0))
-        r = gen.rate({**spec("bedrock", 3, 15, 0.3, 3.75), "_name": "anthropic.claude-y"})
+        r = gen.rate("anthropic.claude-y", spec("bedrock", 3, 15, 0.3, 3.75))
         self.assertEqual(r["cache_write_1h"], 6.0)
 
     def test_a_tier_fills_what_upstream_omits_and_skips_other_service_tiers(self):
@@ -88,8 +88,7 @@ class GenPricesTest(unittest.TestCase):
         # price is another service tier, not a second threshold.
         self.assertEqual(tiers, [{"above": 272000, "input": 8.0, "output": 30.0, "cache_read": 0.8,
                                   "cache_write_5m": 10.0, "cache_write_1h": 10.0}])
-        r = gen.rate({**spec("gemini", 1.25, 10, 0.125, input_cost_per_token_above_200k_tokens=2.5),
-                      "_name": "gemini/x"})
+        r = gen.rate("gemini/x", spec("gemini", 1.25, 10, 0.125, input_cost_per_token_above_200k_tokens=2.5))
         self.assertEqual(r["tiers"][0]["output"], 10.0)
 
     def test_an_inclusive_threshold_is_one_token_lower(self):

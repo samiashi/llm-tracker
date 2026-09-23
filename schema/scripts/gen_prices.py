@@ -22,6 +22,9 @@ import urllib.request
 
 SOURCE = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 
+# Relative to the repository root, where `make prices` runs.
+PRICES = "schema/prices.json"
+
 # Providers a coding harness can plausibly report. Everything else is dropped.
 KEEP_PROVIDERS = {
     "anthropic", "openai", "text-completion-openai",
@@ -66,18 +69,24 @@ FIELDS = {
 # A tier exists where its input price does, which is how LiteLLM's own cost
 # calculation finds one. The "_tokens" anchor skips the _priority, _flex and
 # _batches variants, which are other service tiers, not the standard price.
-TIER_KEY = re.compile(r"^input_cost_per_token_above_(\d+)(k?)_tokens$")
+TIER_KEY = re.compile(r"^input_cost_per_token_above_(\d+k?)_tokens$")
+
+
+def threshold(n: str) -> int:
+    """A tier's bound in tokens, from its spelling upstream: "200k" or "128000"."""
+    return int(n.removesuffix("k")) * (1000 if n.endswith("k") else 1)
+
 
 # LiteLLM bills these providers' tiers from the threshold itself rather than
 # above it (_INCLUSIVE_THRESHOLD_PROVIDERS), so their bound is one token lower.
 INCLUSIVE_THRESHOLD_PROVIDERS = {"xai"}
 
 
-def is_anthropic(spec: dict) -> bool:
-    return spec.get("litellm_provider") == "anthropic" or "claude" in spec["_name"]
+def is_anthropic(name: str, spec: dict) -> bool:
+    return spec.get("litellm_provider") == "anthropic" or "claude" in name
 
 
-def rate(spec: dict) -> dict | None:
+def rate(name: str, spec: dict) -> dict | None:
     """Convert one LiteLLM spec into our per-million-token shape."""
     inp = spec.get(FIELDS["input"])
     out = spec.get(FIELDS["output"])
@@ -90,7 +99,7 @@ def rate(spec: dict) -> dict | None:
     # input (5m 1.25x, 1h 2x) and most Claude models read at 0.1x, so that is
     # the Claude fallback. Elsewhere a provider with no cache price bills
     # cached tokens as ordinary input, and a 1h write as a 5m one.
-    anthropic = is_anthropic(spec)
+    anthropic = is_anthropic(name, spec)
     cache_read = spec.get(FIELDS["cache_read"])
     if cache_read is None:
         cache_read = inp * 0.1 if anthropic else inp
@@ -127,8 +136,8 @@ def long_context_tiers(spec: dict, base: dict) -> list[dict]:
         m = TIER_KEY.match(key)
         if m is None or tier_input is None:
             continue
-        suffix = f"_above_{m.group(1)}{m.group(2)}_tokens"
-        above = int(m.group(1)) * (1000 if m.group(2) else 1)
+        suffix = f"_above_{m.group(1)}_tokens"
+        above = threshold(m.group(1))
         # A tier price upstream leaves out is the base price scaled by the
         # tier's input multiplier; output falls back to the base price.
         scale = tier_input / base["input"] if base["input"] else None
@@ -207,7 +216,7 @@ def check(rates: dict, raw: dict) -> None:
 
     previous = 0
     try:
-        with open("schema/prices.json") as f:
+        with open(PRICES) as f:
             previous = qualified(json.load(f).get("rates", {}))
     except (OSError, ValueError):
         pass
@@ -238,8 +247,7 @@ def check(rates: dict, raw: dict) -> None:
                 expect(key, spec, field, FIELDS[field], got, value)
                 continue
             n = field.removeprefix("above_")
-            above = int(n.removesuffix("k")) * (1000 if n.endswith("k") else 1)
-            tier = next((t for t in got.get("tiers", []) if t["above"] == above), None)
+            tier = next((t for t in got.get("tiers", []) if t["above"] == threshold(n)), None)
             if tier is None:
                 raise SystemExit(f"{key} has no tier above {n}: the upstream tier fields have changed")
             for tf, tv in value.items():
@@ -283,7 +291,7 @@ def build(raw: dict) -> dict[str, dict]:
         provider = spec.get("litellm_provider", "")
         if provider not in KEEP_PROVIDERS and not any(s in name for s in KEEP_SUBSTRINGS):
             continue
-        r = rate({**spec, "_name": name})
+        r = rate(name, spec)
         if r is None or (r["input"] == 0 and r["output"] == 0):
             continue
 
@@ -313,10 +321,10 @@ def main() -> int:
         "source": SOURCE,
         "rates": rates,
     }
-    with open("schema/prices.json", "w") as f:
+    with open(PRICES, "w") as f:
         json.dump(out, f, indent=1, sort_keys=True)
         f.write("\n")
-    print(f"wrote schema/prices.json: {len(rates)} keys")
+    print(f"wrote {PRICES}: {len(rates)} keys")
     return 0
 
 
