@@ -44,12 +44,12 @@ export function change(
 
 /**
  * Billed dollars per million billed tokens. Dividing by all tokens would fold
- * in seat usage, which has no marginal cost; with no billed token count to
- * divide by (an older server sends none) there is no rate, not a wrong one.
+ * in seat usage, which has no marginal cost; with no billed tokens to divide
+ * by there is no rate, not a wrong one.
  */
 export function ratePerMillion(g: Group): number | null {
-  const billedTokens = g.totals.billed_tokens ?? 0;
-  return billedTokens > 0 ? (g.totals.billed_usd / billedTokens) * 1e6 : null;
+  const { billed_tokens: billedTokens, billed_usd: billedUSD } = g.totals;
+  return billedTokens > 0 ? (billedUSD / billedTokens) * 1e6 : null;
 }
 
 /** Promise.allSettled over a record, so every result keeps the name it was requested under. */
@@ -91,8 +91,8 @@ export type Data = {
   heat: HeatCell[];
   /** First UTC day with hourly detail; empty when nothing was pruned. */
   detailFrom: string;
-  /** The heatmap's zone, in minutes east of UTC; undefined from an older server. */
-  heatOffset?: number;
+  /** The heatmap's zone, in minutes east of UTC. */
+  heatOffset: number;
   sessions: SessionRow[];
   health: SourceHealth[];
   unknown: UnknownRow[];
@@ -152,28 +152,32 @@ export async function loadDashboard(filter: Filter, signal: AbortSignal): Promis
   const empty = { groups: [] as Group[] };
   const agents = valueOr(r.agents, { agents: [], now: 0, server_version: "" });
   const matrix = valueOr(r.matrix, { cells: [] as MatrixCell[], col_order: undefined });
-  const heat = valueOr(r.heatmap, { cells: [] as HeatCell[], detail_from: "" });
+  const heat = valueOr(r.heatmap, {
+    cells: [] as HeatCell[],
+    detail_from: "",
+    utc_offset_minutes: 0,
+  });
 
   return {
     range: { from: filter.from, to: filter.to },
     summary,
-    days: valueOr(r.daily, { days: [] }).days ?? [],
-    modelDays: valueOr(r["daily/model"], { points: [] }).points ?? [],
-    people: valueOr(r["breakdown:person"], empty).groups ?? [],
-    models: valueOr(r["breakdown:model"], empty).groups ?? [],
-    harnesses: valueOr(r["breakdown:source"], empty).groups ?? [],
-    surfaces: valueOr(r["breakdown:surface"], empty).groups ?? [],
-    heat: heat.cells ?? [],
+    days: valueOr(r.daily, { days: [] }).days,
+    modelDays: valueOr(r["daily/model"], { points: [] }).points,
+    people: valueOr(r["breakdown:person"], empty).groups,
+    models: valueOr(r["breakdown:model"], empty).groups,
+    harnesses: valueOr(r["breakdown:source"], empty).groups,
+    surfaces: valueOr(r["breakdown:surface"], empty).groups,
+    heat: heat.cells,
     detailFrom: heat.detail_from ?? "",
     heatOffset: heat.utc_offset_minutes,
-    sessions: valueOr(r.sessions, { sessions: [] }).sessions ?? [],
-    health: valueOr(r.health, { sources: [] }).sources ?? [],
-    unknown: valueOr(r.unknown, { unknown: [] }).unknown ?? [],
-    agents: agents.agents ?? [],
-    serverVersion: agents.server_version ?? "",
+    sessions: valueOr(r.sessions, { sessions: [] }).sessions,
+    health: valueOr(r.health, { sources: [] }).sources,
+    unknown: valueOr(r.unknown, { unknown: [] }).unknown,
+    agents: agents.agents,
+    serverVersion: agents.server_version,
     agentsNow: agents.now || Math.floor(Date.now() / 1000),
-    origins: valueOr(r["breakdown:origin"], empty).groups ?? [],
-    modelEffort: matrix.cells ?? [],
+    origins: valueOr(r["breakdown:origin"], empty).groups,
+    modelEffort: matrix.cells,
     modelEffortOrder: matrix.col_order,
     compare: valueOr(r.compare, {
       current: summary.totals,

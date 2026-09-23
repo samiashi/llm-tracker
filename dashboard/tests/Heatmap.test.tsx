@@ -18,7 +18,7 @@ const tabStops = () => document.querySelectorAll('.hbody [tabindex="0"]');
 const focused = () => document.activeElement?.getAttribute("aria-label") ?? "";
 
 describe("the zone its hours are in", () => {
-  const draw = (serverOffset?: number, localOffset?: number) =>
+  const draw = (serverOffset: number, localOffset?: number) =>
     render(
       <Heatmap
         range={{ from: "2026-09-10", to: "2026-09-11" }}
@@ -40,17 +40,13 @@ describe("the zone its hours are in", () => {
       screen.getByText(/Hours are the server's time \(UTC\), not yours \(UTC\+4\)/),
     ).toBeTruthy();
   });
-
-  it("falls back to the server's zone, unnamed, for an older server", () => {
-    draw(undefined, 240);
-    expect(screen.getByText(/Hours are in the server's time zone/)).toBeTruthy();
-  });
 });
 
 describe("heatmap rows", () => {
   it("draws the server-local day before the range when the server returns it", () => {
     render(
       <Heatmap
+        serverOffset={0}
         range={{ from: "2026-09-10", to: "2026-09-12" }}
         cells={[cell("2026-09-09", 22, 9_000_000), cell("2026-09-11", 10)]}
       />,
@@ -62,6 +58,7 @@ describe("heatmap rows", () => {
   it("names days before detail_from as not kept rather than drawing them idle", () => {
     render(
       <Heatmap
+        serverOffset={0}
         range={{ from: "2026-09-01", to: "2026-09-12" }}
         detailFrom="2026-09-10"
         cells={[cell("2026-09-11", 10)]}
@@ -74,6 +71,7 @@ describe("heatmap rows", () => {
   it("says a range wholly before detail_from has no hourly detail, not no activity", () => {
     render(
       <Heatmap
+        serverOffset={0}
         range={{ from: "2026-08-01", to: "2026-08-31" }}
         detailFrom="2026-09-10"
         cells={[]}
@@ -89,6 +87,7 @@ describe("heatmap keyboard access", () => {
     render(
       <>
         <Heatmap
+          serverOffset={0}
           range={{ from: "2026-06-26", to: "2026-09-23" }}
           cells={[cell("2026-09-23", 9), cell("2026-09-01", 14)]}
         />

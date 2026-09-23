@@ -1,23 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "@/App";
+import type { Totals } from "@/api";
 import { utcMidnightAt } from "@/format";
 
 // Rendering the whole page catches what the pure-function tests cannot: a
 // runtime error that leaves a blank page while every asset still returns 200.
 
-const totals = {
+const totals: Totals = {
   events: 10,
   total_tokens: 1000,
   input_tokens: 100,
   output_tokens: 200,
   cache_read_tokens: 600,
   cache_write_tokens: 100,
-  reasoning_tokens: 50,
   billed_usd: 1.5,
+  billed_tokens: 0,
   rate_card_usd: 20,
+  unknown_basis_usd: 0,
   unpriced_tokens: 0,
-  unpriced_events: 0,
 };
 
 const group = (key: string, t: object = totals) => ({ key, label: "", totals: t });
@@ -272,9 +273,9 @@ describe("spend", () => {
     expect(rate?.textContent).toBe("$10.00");
   });
 
-  it("shows no rate, rather than a wrong one, without a billed token count", async () => {
-    const old = { ...totals, total_tokens: 4e6, billed_usd: 10 }; // an older server
-    vi.stubGlobal("fetch", mockFetch({ "by=model": () => ok({ groups: [group("opus", old)] }) }));
+  it("shows no rate, rather than a wrong one, without billed tokens to divide by", async () => {
+    const seat = { ...totals, total_tokens: 4e6, billed_tokens: 0, billed_usd: 10 };
+    vi.stubGlobal("fetch", mockFetch({ "by=model": () => ok({ groups: [group("opus", seat)] }) }));
     render(<App />);
     await loaded();
     const rate = card("Effective rate per 1M tokens").querySelector(".barrow .val");

@@ -2,7 +2,7 @@ import { MODEL_SLOTS } from "@/palette";
 
 /**
  * Billed, rate-card and unknown-basis spend are three kinds of number and are
- * never summed (invariant 3). The optional fields are absent from older servers.
+ * never summed (invariant 3).
  */
 export type Totals = {
   events: number;
@@ -11,16 +11,13 @@ export type Totals = {
   output_tokens: number;
   cache_read_tokens: number;
   cache_write_tokens: number;
-  reasoning_tokens: number;
   billed_usd: number;
-  rate_card_usd: number;
-  unpriced_tokens: number;
-  unpriced_events: number;
   /** Priced tokens billed as metered usage: the denominator of an effective rate. */
-  billed_tokens?: number;
+  billed_tokens: number;
+  rate_card_usd: number;
   /** Priced at list rates, but whether it was metered or a seat is unknown. */
-  unknown_basis_usd?: number;
-  unknown_basis_tokens?: number;
+  unknown_basis_usd: number;
+  unpriced_tokens: number;
 };
 
 export type Group = { key: string; label?: string; totals: Totals };
@@ -53,8 +50,8 @@ type HeatmapResult = {
   cells: HeatCell[];
   /** First UTC day with per-event detail; absent or empty when nothing was pruned. */
   detail_from?: string;
-  /** The zone the hours are in, in minutes east of UTC; absent from older servers. */
-  utc_offset_minutes?: number;
+  /** The zone the hours are in, in minutes east of UTC. */
+  utc_offset_minutes: number;
 };
 
 export type SessionRow = {
@@ -66,7 +63,7 @@ export type SessionRow = {
   tokens: number;
   billed_usd: number;
   rate_card_usd: number;
-  unknown_basis_usd?: number;
+  unknown_basis_usd: number;
   events: number;
   last_seen: number;
 };
@@ -82,7 +79,8 @@ export type MatrixCell = {
   tokens: number;
   billed_usd: number;
   rate_card_usd: number;
-  unknown_basis_usd?: number;
+  unknown_basis_usd: number;
+  events: number;
 };
 
 /** Why a detected harness has no adapter. Widened for forward compatibility. */
@@ -103,8 +101,7 @@ export type UnknownRow = {
 export type Filter = { from: string; to: string; person?: string };
 
 export type Compare = {
-  /** No longer sent: the summary's totals are the current window's. */
-  current?: Totals;
+  current: Totals;
   previous: Totals;
   previous_from: string;
   previous_to: string;
@@ -120,6 +117,7 @@ export type AgentRow = {
   hostname: string;
   person: string;
   agent_version: string;
+  first_seen: number;
   last_sync: number;
   events: number;
 };

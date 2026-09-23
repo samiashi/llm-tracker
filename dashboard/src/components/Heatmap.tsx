@@ -41,8 +41,7 @@ const hh = (h: number) => String(h).padStart(2, "0");
  * Whose clock the hours are on. A server left on UTC (a container's default)
  * shifts every hour by the team's offset, so a mismatch is said outright.
  */
-function zoneOf(server?: number, local?: number): string {
-  if (server === undefined) return "Hours are in the server's time zone";
+function zoneOf(server: number, local?: number): string {
   if (server === local) return `Hours are your local time (${utcOffset(server)})`;
   if (local === undefined) return `Hours are the server's time (${utcOffset(server)})`;
   return `Hours are the server's time (${utcOffset(server)}), not yours (${utcOffset(local)})`;
@@ -141,7 +140,7 @@ export function Heatmap({
   /** First UTC day with per-event detail; days before it hold daily rollups only. */
   detailFrom?: string;
   /** The zone the server bucketed hours in, in minutes east of UTC. */
-  serverOffset?: number;
+  serverOffset: number;
   /** The viewer's own offset, to say whether those hours are theirs. */
   localOffset?: number;
 }) {

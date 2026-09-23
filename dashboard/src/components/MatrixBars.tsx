@@ -84,7 +84,7 @@ export function MatrixBars({
       s.tokens += c.tokens;
       s.billed += c.billed_usd;
       s.rateCard += c.rate_card_usd;
-      s.unknownBasis += c.unknown_basis_usd ?? 0;
+      s.unknownBasis += c.unknown_basis_usd;
       segments.set(key, s);
       byRow.set(c.row, segments);
     }

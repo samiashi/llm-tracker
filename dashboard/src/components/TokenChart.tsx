@@ -15,12 +15,11 @@ import { ChartTooltip, Legend } from "@/components/chart";
 import { usePrefersReducedMotion } from "@/motion";
 
 /**
- * A required numeric field of Totals. Tied to the type, a field renamed
- * server-side is a build error rather than a flat line at zero; an optional
- * one, which an older server omits, is not chartable.
+ * A numeric field of Totals. Tied to the type, a field renamed server-side is
+ * a build error rather than a flat line at zero.
  */
 type NumericTotal = {
-  [K in keyof Totals]-?: Totals[K] extends number ? K : never;
+  [K in keyof Totals]: Totals[K] extends number ? K : never;
 }[keyof Totals];
 
 type Series = { key: NumericTotal; name: string; color: string };
@@ -33,11 +32,11 @@ const EMPTY_TOTALS: Totals = {
   output_tokens: 0,
   cache_read_tokens: 0,
   cache_write_tokens: 0,
-  reasoning_tokens: 0,
   billed_usd: 0,
+  billed_tokens: 0,
   rate_card_usd: 0,
+  unknown_basis_usd: 0,
   unpriced_tokens: 0,
-  unpriced_events: 0,
 };
 
 /**

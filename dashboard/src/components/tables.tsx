@@ -19,7 +19,7 @@ export function SessionsTable({
   const shown = sessions.slice(0, max);
   const hidden = sessions.length - shown.length;
   // Its own column, shown only when there is any: never folded into billed or rate card.
-  const unknownBasis = shown.some((s) => (s.unknown_basis_usd ?? 0) > 0);
+  const unknownBasis = shown.some((s) => s.unknown_basis_usd > 0);
   return (
     <div className="scroll">
       <table>
@@ -61,7 +61,7 @@ export function SessionsTable({
               <td className="num">{tokens(s.tokens)}</td>
               <td className="num">{usd(s.billed_usd)}</td>
               <td className="num">{usd(s.rate_card_usd)}</td>
-              {unknownBasis && <td className="num">{usd(s.unknown_basis_usd ?? 0)}</td>}
+              {unknownBasis && <td className="num">{usd(s.unknown_basis_usd)}</td>}
               <td className="num">{exact(s.events)}</td>
               <td className="num">{ago(s.last_seen, now)}</td>
             </tr>

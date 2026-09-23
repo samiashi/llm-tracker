@@ -233,7 +233,7 @@ function Dashboard({
   const unpricedShare = t.total_tokens ? (t.unpriced_tokens / t.total_tokens) * 100 : 0;
   const subagentTokens = data.origins.find((g) => g.key === "subagent")?.totals.total_tokens ?? 0;
   const subagentShare = t.total_tokens ? (subagentTokens / t.total_tokens) * 100 : 0;
-  const unknownBasis = t.unknown_basis_usd ?? 0;
+  const unknownBasis = t.unknown_basis_usd;
 
   // The chart draws the busiest models; the breakdown is the complete list.
   const charted = new Set(data.modelDays.map((p) => p.model));
@@ -283,7 +283,7 @@ function Dashboard({
           <Tile
             label="Basis unknown — at list prices"
             value={usd(unknownBasis)}
-            delta={delta(unknownBasis, prev.unknown_basis_usd ?? 0)}
+            delta={delta(unknownBasis, prev.unknown_basis_usd)}
             hint="Priced usage that may be metered or a seat: Copilot, or an API key with no detected account. Never added to either figure."
           />
         )}
