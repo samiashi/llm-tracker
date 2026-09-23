@@ -640,6 +640,89 @@ func TestPruningOldCodexKeysClosesTheirDays(t *testing.T) {
 	}
 }
 
+// VACUUM copies the whole database under the write lock, so a nightly prune
+// that frees a day's rows, which later inserts reuse, leaves the file alone;
+// one that frees much of it gives the space back.
+func TestPruneRebuildsTheFileOnlyWhenMuchOfItIsFree(t *testing.T) {
+	freePages := func(d *DB) int64 {
+		t.Helper()
+		var n int64
+		if err := d.read.QueryRow(`SELECT freelist_count FROM pragma_freelist_count`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	recent := func(n int) []schema.Event {
+		out := make([]schema.Event, n)
+		for i := range out {
+			out[i] = ev(fmt.Sprint("recent-", i), 1_000, schema.CostBilled)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name     string
+		old      int
+		vacuumed bool
+	}{
+		{"a sliver of the file freed", 100, false},
+		{"most of the file freed", 6_000, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newDB(t)
+			for _, batch := range [][]schema.Event{oldDay("old", tc.old, 1_000), recent(3_000)} {
+				for i := 0; i < len(batch); i += 2_000 {
+					ingest(t, d, batch[i:min(i+2_000, len(batch))]...)
+				}
+			}
+			res, err := d.Prune(context.Background(), time.Now().AddDate(0, 0, -100).UTC().Format(time.DateOnly))
+			if err != nil || res.VacuumErr != nil {
+				t.Fatal(err, res.VacuumErr)
+			}
+			if res.Vacuumed != tc.vacuumed || (freePages(d) == 0) != tc.vacuumed {
+				t.Fatalf("vacuumed %v with %d pages free, want vacuumed %v", res.Vacuumed, freePages(d), tc.vacuumed)
+			}
+		})
+	}
+}
+
+// A VACUUM that fails leaves the file as large as it was, which nobody learns
+// unless the failure reaches the log.
+func TestAFailedVacuumIsReported(t *testing.T) {
+	d, ctx := newDB(t), context.Background()
+	ingest(t, d, oldDay("old", 2_000, 1_000)...)
+	if _, err := d.write.ExecContext(ctx, `DELETE FROM event`); err != nil {
+		t.Fatal(err)
+	}
+	// The write pool's one connection can no longer write.
+	if _, err := d.write.ExecContext(ctx, `PRAGMA query_only = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if vacuumed, err := d.vacuumIfMostlyFree(ctx); vacuumed || err == nil {
+		t.Fatalf("vacuumed %v, err %v; want the failure returned", vacuumed, err)
+	}
+}
+
+// VACUUM copies the whole file into the temp store, so it runs with a file
+// one; the write pool's connection must come back with the memory temp store
+// ingest is timed with.
+func TestAVacuumHandsTheWriteConnectionBackAsItWas(t *testing.T) {
+	d, ctx := newDB(t), context.Background()
+	ingest(t, d, oldDay("old", 2_000, 1_000)...)
+	if _, err := d.write.ExecContext(ctx, `DELETE FROM event`); err != nil {
+		t.Fatal(err)
+	}
+	if vacuumed, err := d.vacuumIfMostlyFree(ctx); !vacuumed || err != nil {
+		t.Fatalf("vacuumed %v, err %v; want a vacuum of a mostly free file", vacuumed, err)
+	}
+	var store int
+	if err := d.write.QueryRowContext(ctx, `PRAGMA temp_store`).Scan(&store); err != nil {
+		t.Fatal(err)
+	}
+	if store != 2 {
+		t.Fatalf("the write connection came back with temp_store %d, want 2 (memory)", store)
+	}
+}
+
 // Rows on a key their collector has since replaced come back under new ids
 // once their machine upgrades, and the ledger cannot match those to the
 // rollup that already counts them: a prune closes their days instead. Rows

@@ -8,13 +8,23 @@ import (
 
 // PruneResult reports what a retention pass did.
 type PruneResult struct {
-	Cutoff     string `json:"cutoff"`
-	DaysRolled int    `json:"days_rolled"`
+	Cutoff     string
+	DaysRolled int
 	// MachinesPruned counts agents that stopped reporting before the window.
-	MachinesPruned int64 `json:"machines_pruned"`
-	RollupRows     int64 `json:"rollup_rows"`
-	EventsPruned   int64 `json:"events_pruned"`
+	MachinesPruned int64
+	RollupRows     int64
+	EventsPruned   int64
+	// Vacuumed reports whether the file was rebuilt to return its free pages
+	// to the disk, and VacuumErr why that failed, after the prune committed.
+	Vacuumed  bool
+	VacuumErr error
 }
+
+// vacuumShare is how much of the file must be free pages before a prune
+// rebuilds it. VACUUM copies the whole database under the write lock, which
+// ingest waits on; a nightly prune frees a day's rows, which later inserts
+// reuse, where the first prune of a long history frees most of the file.
+const vacuumShare = 0.25
 
 // rollupKey is daily_rollup's primary key: every dimension a rolled-up day
 // keeps, and what Prune groups by. The two must agree or every prune aborts
@@ -177,9 +187,38 @@ func (d *DB) Prune(ctx context.Context, before string) (*PruneResult, error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	// A DELETE alone leaves the file its old size; VACUUM returns the pages.
-	_, _ = d.write.ExecContext(ctx, `VACUUM`)
+	res.Vacuumed, res.VacuumErr = d.vacuumIfMostlyFree(ctx)
 	return res, nil
+}
+
+// vacuumIfMostlyFree returns the file's free pages to the disk when they are
+// vacuumShare of it or more: a DELETE alone leaves the file its old size.
+func (d *DB) vacuumIfMostlyFree(ctx context.Context) (bool, error) {
+	var free, pages int64
+	if err := d.read.QueryRowContext(ctx, `
+		SELECT f.freelist_count, p.page_count
+		FROM pragma_freelist_count AS f, pragma_page_count AS p`).Scan(&free, &pages); err != nil {
+		return false, err
+	}
+	if float64(free) < vacuumShare*float64(pages) {
+		return false, nil
+	}
+	// VACUUM builds its copy of the file in the temp store, which the write
+	// pool keeps in memory for ingest: the whole database in RAM on a small
+	// VM. It copies to a file instead, and hands the connection back as it was.
+	conn, err := d.write.Conn(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA temp_store = FILE`); err != nil {
+		return false, err
+	}
+	defer func() { _, _ = conn.ExecContext(context.WithoutCancel(ctx), `PRAGMA temp_store = MEMORY`) }()
+	if _, err := conn.ExecContext(ctx, `VACUUM`); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // raiseFloor moves a floor forward, never back: it records how far raw rows

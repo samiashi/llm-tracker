@@ -263,6 +263,10 @@ func pruneDaily(ctx context.Context, d *db.DB, retain int, log *slog.Logger) {
 		if res.DaysRolled > 0 {
 			logPruned(log, res)
 		}
+		if res.VacuumErr != nil {
+			log.Warn("pruned, but returning the freed space to the disk failed; the next prune retries",
+				"err", res.VacuumErr)
+		}
 	}
 
 	run()
@@ -287,5 +291,5 @@ func pruneCutoff(days int) string {
 func logPruned(log *slog.Logger, res *db.PruneResult) {
 	log.Info("pruned", "cutoff", res.Cutoff, "days", res.DaysRolled,
 		"rollup_rows", res.RollupRows, "events_pruned", res.EventsPruned,
-		"machines_pruned", res.MachinesPruned)
+		"machines_pruned", res.MachinesPruned, "vacuumed", res.Vacuumed)
 }
