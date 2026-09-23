@@ -259,6 +259,17 @@ describe("App", () => {
     );
   });
 
+  // The dark theme's ramp runs from dark to light, so "darker is busier" is
+  // backwards there; the legend is what both themes share.
+  it("describes the heatmap's shading in words true in both themes", async () => {
+    vi.stubGlobal("fetch", mockFetch());
+    render(<App />);
+    await loaded();
+    const note = card("When the work happens").querySelector(".note")?.textContent ?? "";
+    expect(note).not.toMatch(/dark|light/i);
+    expect(note).toMatch(/legend/);
+  });
+
   // A failure counts once per endpoint, however many fields read it: /v1/agents feeds three.
   it.each(["/v1/agents", "/v1/matrix", "/v1/breakdown"])(
     "names each failing endpoint once (%s)",

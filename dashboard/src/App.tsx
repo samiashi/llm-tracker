@@ -479,7 +479,7 @@ function Dashboard({
         <Card
           title="When the work happens"
           failed={down.has("heatmap")}
-          note="Tokens by day and hour. Darker is busier; shades are quantiles, so one runaway hour cannot wash out the rest. Activity overnight is usually an agent left running."
+          note="Tokens by day and hour: the more a cell stands out, the busier the hour. Shades are quantiles, so one runaway hour cannot wash out the rest; the legend gives each one's range. Activity overnight is usually an agent left running."
         >
           {() => (
             <div className="scroll">
