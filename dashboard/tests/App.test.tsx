@@ -346,6 +346,33 @@ describe("the change against the prior period", () => {
     expect(deltas.length).toBeGreaterThan(0);
     expect(deltas.every((d) => d === "prior period only partly recorded")).toBe(true);
   });
+
+  // The team's history begins in June, so its prior window is recorded; this
+  // person's begins 10 August, inside it. Their growth would be their install.
+  it("gives a person whose history starts inside the prior window no percentage", async () => {
+    const half = { ...totals, total_tokens: 500, billed_usd: 0.75, rate_card_usd: 10 };
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/v1/summary": (url) =>
+          ok({
+            totals,
+            history_first_day: url.includes("person=") ? "2026-08-10" : "2026-06-01",
+            history_last_day: "2026-09-22",
+            server_release: "",
+          }),
+        "/v1/compare": () =>
+          ok({ previous: half, previous_from: "2026-07-24", previous_to: "2026-08-22" }),
+      }),
+    );
+    window.history.replaceState(null, "", "/?from=2026-08-23&to=2026-09-22&person=a%40b.c");
+    render(<App />);
+    await loaded();
+
+    const deltas = [...document.querySelectorAll(".delta")].map((d) => d.textContent);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(deltas.every((d) => d === "prior period only partly recorded")).toBe(true);
+  });
 });
 
 describe("a failed request is never shown as an empty range", () => {
