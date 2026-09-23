@@ -27,6 +27,12 @@ func TestRepriceNeverOverwritesAConcurrentIngest(t *testing.T) {
 	for i := 0; i < n; i += 2_000 {
 		ingest(t, d, base[i:i+2_000]...)
 	}
+	// A new release's rate, so every row is stale and reprice writes
+	// throughout; against an unchanged table it writes nothing and races
+	// nothing. Set before anything reads the table concurrently.
+	r := d.prices.Rates["|claude-opus-5"]
+	r.Input *= 2
+	d.prices.Rates["|claude-opus-5"] = r
 
 	// Meanwhile: longer readings of half the rows, native figures for the rest.
 	var stop atomic.Bool
@@ -60,11 +66,14 @@ func TestRepriceNeverOverwritesAConcurrentIngest(t *testing.T) {
 			}
 		}
 	})
-	_, err := d.reprice(ctx)
+	wrote, err := d.reprice(ctx)
 	stop.Store(true)
 	wg.Wait()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if wrote == 0 {
+		t.Fatal("setup: reprice wrote nothing, so it raced nothing")
 	}
 
 	stale, clobbered := 0, 0
@@ -191,6 +200,49 @@ func TestEachNewBuildRepricesOnce(t *testing.T) {
 	}
 	if n, ran, err := d.RepriceIfChanged(ctx, "v1.5.0"); err != nil || !ran || n != 0 {
 		t.Fatalf("v1.5.0: repriced %d, ran %v, err %v; want a pass that changes nothing", n, ran, err)
+	}
+}
+
+// A working tree's build string survives `make prices`, and the table's
+// version only counts its keys: named by those alone, a changed rate would
+// never reach the rows already stored, and totals would mix two tables.
+func TestAChangedRateRepricesUnderTheSameBuild(t *testing.T) {
+	d := newDB(t)
+	ctx := context.Background()
+	ingest(t, d, ev("a", 1_000_000, schema.CostBilled))
+	if _, ran, err := d.RepriceIfChanged(ctx, "176d913-dirty"); err != nil || !ran {
+		t.Fatalf("first start: ran %v (%v)", ran, err)
+	}
+
+	r := d.prices.Rates["|claude-opus-5"]
+	r.Input *= 2
+	d.prices.Rates["|claude-opus-5"] = r
+	if n, ran, err := d.RepriceIfChanged(ctx, "176d913-dirty"); err != nil || !ran || n != 1 {
+		t.Fatalf("after a rate changed: repriced %d, ran %v (%v); want the one row", n, ran, err)
+	}
+	stored, cost, _ := storedEvent(t, d, "a")
+	if want, _ := d.priceEvent(&stored); cost != want {
+		t.Fatalf("stored cost %v, the table now prices it at %v", cost, want)
+	}
+}
+
+// A release that learns a model's price is zero -- a local runtime added to
+// the list -- changes no cost, only where it came from. Compared on cost
+// alone, the row stays unpriced and the dashboard keeps flagging it for good.
+func TestRepriceMovesAZeroCostRowOutOfUnpriced(t *testing.T) {
+	d := newDB(t)
+	e := ev("local", 1_000, schema.CostBilled)
+	e.Model = "not-a-real-model"
+	ingest(t, d, e)
+	if _, _, source := storedEvent(t, d, "local"); source != "unpriced" {
+		t.Fatalf("setup: stored as %s", source)
+	}
+	d.prices.Rates[schema.PriceKey("", "not-a-real-model")] = schema.Rate{}
+	if _, err := d.reprice(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, cost, source := storedEvent(t, d, "local"); source != "table" || cost != 0 {
+		t.Fatalf("stored (%v, %s) after the table priced it at $0, want (0, table)", cost, source)
 	}
 }
 

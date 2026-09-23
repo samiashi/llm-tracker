@@ -301,8 +301,8 @@ provision but a disk.
 - **Migrations run themselves** — `goose.Up` on `db.Open`, from an embedded FS.
   Deploying is replacing the binary and restarting.
 - **Stored costs follow the build.** Cost is resolved at ingest, so each new
-  build reprices stored events once, in the background after it starts
-  (`db.RepriceIfChanged`). Every write is conditional on the row still holding
+  build, and a changed price table under the same build, reprices stored
+  events once, in the background after it starts (`db.RepriceIfChanged`). Every write is conditional on the row still holding
   what it was priced from, which is what makes running beside ingest safe.
   Rolled-up days keep the prices they had: a rollup keeps sums, not the
   dimensions pricing needs.

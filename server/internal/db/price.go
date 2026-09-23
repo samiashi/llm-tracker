@@ -2,7 +2,10 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -91,7 +94,10 @@ const pricedByKey = "priced_by"
 // new build reprices once; a pass cut short is repeated at the next start.
 // ran reports whether it repriced at all.
 func (d *DB) RepriceIfChanged(ctx context.Context, build string) (updated int, ran bool, err error) {
-	pricedBy := build + " " + d.prices.Version
+	pricedBy, err := d.pricedBy(build)
+	if err != nil {
+		return 0, false, err
+	}
 	var last string
 	err = d.read.QueryRowContext(ctx,
 		`SELECT value FROM setting WHERE key = ?`, pricedByKey).Scan(&last)
@@ -108,6 +114,19 @@ func (d *DB) RepriceIfChanged(ctx context.Context, build string) (updated int, r
 		`INSERT INTO setting (key, value) VALUES (?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, pricedByKey, pricedBy)
 	return updated, true, err
+}
+
+// pricedBy names this build and the content of its price table. The table's
+// version only counts its keys, and a working tree's build string survives a
+// `make prices`, so a changed rate named by neither would never reach the
+// rows already stored.
+func (d *DB) pricedBy(build string) (string, error) {
+	rates, err := json.Marshal(d.prices.Rates)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(rates)
+	return build + " " + d.prices.Version + " " + hex.EncodeToString(sum[:6]), nil
 }
 
 // reprice recomputes the cost of every event priced from the table, against
