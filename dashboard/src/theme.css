@@ -36,6 +36,11 @@
   --warning: #fab219;
   --critical: #d03b3b;
 
+  /* The interface's own colour -- focus rings, the selected row, the loading
+     bar -- kept apart from the series slots, so a change to the palette
+     cannot repaint the page around the charts. */
+  --accent: #2a78d6;
+
   --radius: 10px;
   --font: ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -61,6 +66,7 @@
     --series-8: #cf5a3c;
     --series-9: #8b9099;
     --muted-fill: #565c66;
+    --accent: #3987e5;
     --seq-0: #383835;
     --seq-1: #104281;
     --seq-2: #184f95;
@@ -195,7 +201,7 @@ header.top h1 {
   border-color: var(--grid);
 }
 .icon-button:focus-visible {
-  outline: 2px solid var(--series-1);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -489,11 +495,11 @@ tr:last-child td {
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 .barrow.clickable:focus-visible {
-  outline: 2px solid var(--series-1);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 .barrow.selected {
-  background: color-mix(in srgb, var(--series-1) 12%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 /* The active drill-down, shown as a dismissible chip. */
@@ -504,8 +510,8 @@ tr:last-child td {
   font-size: 12.5px;
   padding: 4px 6px 4px 11px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--series-1) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--series-1) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   color: var(--text-primary);
 }
 .chip button {
@@ -621,7 +627,7 @@ tr:last-child td {
   right: 0;
   top: 0;
   height: 100%;
-  background: color-mix(in srgb, var(--series-1) 26%, transparent);
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
   border-radius: 2px;
 }
 .heat2 .rowtext {
@@ -882,9 +888,9 @@ tr:last-child td {
   opacity: 0.85;
 }
 .tag.todo {
-  color: var(--series-1);
-  border-color: color-mix(in srgb, var(--series-1) 40%, transparent);
-  background: color-mix(in srgb, var(--series-1) 10%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 /* The unpriced banner's colour, where a figure would otherwise read $0. */
 .tag.unpriced {
@@ -1080,7 +1086,7 @@ button.more:hover {
   text-decoration-style: solid;
 }
 button.more:focus-visible {
-  outline: 2px solid var(--series-1);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1098,8 +1104,8 @@ button.more:focus-visible {
   background: linear-gradient(
     90deg,
     transparent,
-    var(--series-1) 40%,
-    var(--series-1) 60%,
+    var(--accent) 40%,
+    var(--accent) 60%,
     transparent
   );
   background-size: 40% 100%;
@@ -1126,7 +1132,7 @@ button.more:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .loadbar {
     animation: none;
-    background: var(--series-1);
+    background: var(--accent);
   }
   .stale-data {
     transition: none;
