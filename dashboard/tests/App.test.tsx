@@ -312,6 +312,28 @@ describe("spend", () => {
     expect(sessions.textContent).toContain("$0.75");
   });
 
+  // A cache write is prompt that missed the cache, so it belongs in the
+  // denominator: 900 of 1,000 prompt tokens were served from cache.
+  it("counts cache writes as misses in the cache hit rate", async () => {
+    const t = { ...totals, input_tokens: 20, cache_read_tokens: 900, cache_write_tokens: 80 };
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        "/v1/summary": () =>
+          ok({
+            totals: t,
+            history_first_day: "2026-09-01",
+            history_last_day: "2026-09-22",
+            server_release: "",
+          }),
+      }),
+    );
+    render(<App />);
+    await loaded();
+    const tile = screen.getByText("Cache hit rate").closest(".tile")!;
+    expect(tile.querySelector(".value")?.textContent).toBe("90.0%");
+  });
+
   it("hides unknown-basis spend when there is none", async () => {
     vi.stubGlobal("fetch", mockFetch());
     render(<App />);

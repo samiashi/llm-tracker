@@ -228,7 +228,9 @@ function Dashboard({
   const firstDay = summary.history_first_day;
   const delta = (current: number, previous: number) => change(current, previous, compare, firstDay);
 
-  const cacheable = t.cache_read_tokens + t.input_tokens;
+  // Every prompt token: input arrives with cache reads and writes already
+  // taken out, and a cache write is prompt that missed the cache.
+  const cacheable = t.cache_read_tokens + t.cache_write_tokens + t.input_tokens;
   const cacheHitRate = cacheable ? (t.cache_read_tokens / cacheable) * 100 : 0;
   const unpricedShare = t.total_tokens ? (t.unpriced_tokens / t.total_tokens) * 100 : 0;
   const subagentTokens = data.origins.find((g) => g.key === "subagent")?.totals.total_tokens ?? 0;
