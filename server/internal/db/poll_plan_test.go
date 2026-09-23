@@ -51,6 +51,8 @@ func (s planStep) reads() string {
 // if at all, only by a seek down a covering index.
 func TestPollQueriesNeverReadEventRowByRow(t *testing.T) {
 	d := newDB(t)
+	teamRange, _ := dayRangeQuery("")
+	personRange, personArgs := dayRangeQuery("dev@example.com")
 	cases := []struct {
 		name  string
 		query string
@@ -60,7 +62,8 @@ func TestPollQueriesNeverReadEventRowByRow(t *testing.T) {
 	}{
 		{"agents", agentsQuery, nil, []string{"event_day", "daily_rollup"}},
 		{"source health", sourceHealthQuery, nil, []string{"event_day"}},
-		{"day range", dayRangeQuery, nil, []string{"event_day", "daily_rollup"}},
+		{"day range", teamRange, nil, []string{"event_day", "daily_rollup"}},
+		{"a person's day range", personRange, personArgs, []string{"event_day", "daily_rollup"}},
 		{"the view every windowed query reads",
 			`SELECT ` + totalsSelect + ` FROM event_daily WHERE day BETWEEN ? AND ?`,
 			[]any{"2026-01-01", "2026-01-31"}, []string{"event_day", "daily_rollup"}},

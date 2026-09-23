@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
 )
@@ -68,6 +69,30 @@ func TestOnlyAReleaseIsReportedAsOne(t *testing.T) {
 				t.Errorf("server on %q reported as release %v, want %q", version, summary.ServerRelease, want)
 			}
 		})
+	}
+}
+
+// Filtered to a person, the history the summary reports is theirs: the
+// dashboard calls a prior period before it unrecorded rather than a drop.
+func TestTheSummaryHistoryIsThePersonsOwn(t *testing.T) {
+	s := newServer(t)
+	day := func(daysAgo int) time.Time { return time.Now().AddDate(0, 0, -daysAgo) }
+	early := event("early", "claude-opus-5", "anthropic:b", 100)
+	early.TS = day(60)
+	late := event("late", "claude-opus-5", "anthropic:a", 100)
+	late.TS = day(20)
+	seed(t, s, early, late)
+
+	var got struct {
+		First string `json:"history_first_day"`
+	}
+	getJSON(t, s, "/v1/summary?person=dev@example.com", &got)
+	if want := day(20).UTC().Format(time.DateOnly); got.First != want {
+		t.Fatalf("history_first_day = %q for dev@example.com, want their first day %s", got.First, want)
+	}
+	getJSON(t, s, "/v1/summary", &got)
+	if want := day(60).UTC().Format(time.DateOnly); got.First != want {
+		t.Fatalf("history_first_day = %q for the team, want %s", got.First, want)
 	}
 }
 

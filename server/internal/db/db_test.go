@@ -350,7 +350,7 @@ func TestAZeroTimestampLandsOnTodayNotYearOne(t *testing.T) {
 		t.Fatalf("a zero-timestamp event is missing from today: %d tokens", total.TotalTokens)
 	}
 
-	first, _, err := d.DayRange(ctx)
+	first, _, err := d.DayRange(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}

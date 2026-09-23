@@ -71,6 +71,26 @@ func TestEveryPersonKeyFiltersToItsOwnTotals(t *testing.T) {
 	}
 }
 
+// A person's history is their own: the prior period before their first day
+// is unrecorded for them, however far back the team's goes.
+func TestAPersonsHistoryIsTheirOwn(t *testing.T) {
+	d := newDB(t)
+	people(t, d)
+	day := func(daysAgo int) string { return time.Now().AddDate(0, 0, -daysAgo).UTC().Format(time.DateOnly) }
+	for _, c := range []struct{ person, first, last string }{
+		{"", day(40), day(1)},
+		{"dev@example.com", day(40), day(10)},
+		{"anthropic:c", day(5), day(5)},
+		{"unknown", day(1), day(1)},
+		{"nobody@example.com", "", ""},
+	} {
+		first, last, err := d.DayRange(context.Background(), c.person)
+		if err != nil || first != c.first || last != c.last {
+			t.Errorf("history of %q: %q -> %q (%v), want %q -> %q", c.person, first, last, err, c.first, c.last)
+		}
+	}
+}
+
 // A person filter on raw events must range over the person's days in the
 // window, not read their whole history to keep the window's rows.
 func TestAPersonFilterReadsOnlyTheirDaysInTheWindow(t *testing.T) {

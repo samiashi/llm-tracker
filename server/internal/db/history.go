@@ -95,15 +95,24 @@ func Release(version string) string {
 }
 
 // DayRange reports the extent of stored history, so the dashboard can say how
-// far back the data actually goes rather than implying it is complete.
-func (d *DB) DayRange(ctx context.Context) (first, last string, err error) {
+// far back the data actually goes rather than implying it is complete. Given a
+// person, it is theirs: a period before their first day is unrecorded for them
+// however far back the team's history goes.
+func (d *DB) DayRange(ctx context.Context, person string) (first, last string, err error) {
+	q, args := dayRangeQuery(person)
 	var f, l sql.NullString
-	err = d.read.QueryRowContext(ctx, dayRangeQuery).Scan(&f, &l)
+	err = d.read.QueryRowContext(ctx, q, args...).Scan(&f, &l)
 	return f.String, l.String, err
 }
 
-// dayRangeQuery is DayRange's statement.
-const dayRangeQuery = `SELECT MIN(day), MAX(day) FROM event_daily`
+// dayRangeQuery is DayRange's statement, for a person or, given "", the team.
+func dayRangeQuery(person string) (string, []any) {
+	if person == "" {
+		return `SELECT MIN(day), MAX(day) FROM event_daily`, nil
+	}
+	return `SELECT MIN(day), MAX(day) FROM event_daily WHERE account_ref IN ` + personRefs,
+		personArgs(person)
+}
 
 // EarliestRawDay is the first day from which every day is answerable from
 // individual events, or "" when there are none.

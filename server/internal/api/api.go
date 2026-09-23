@@ -104,12 +104,13 @@ func windowed(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
-	totals, err := s.DB.Totals(r.Context(), window(r))
+	win := window(r)
+	totals, err := s.DB.Totals(r.Context(), win)
 	if err != nil {
 		s.writeInternal(w, "summary", err)
 		return
 	}
-	first, last, err := s.DB.DayRange(r.Context())
+	first, last, err := s.DB.DayRange(r.Context(), win.Person)
 	if err != nil {
 		s.writeInternal(w, "summary", err)
 		return
