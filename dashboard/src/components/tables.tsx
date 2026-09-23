@@ -1,16 +1,7 @@
 import type { AgentRow, SessionRow, SourceHealth, UnknownRow } from "@/api";
-import { More } from "@/components/parts";
-import {
-  ago,
-  agentHealth,
-  bytes,
-  exact,
-  fleetVersion,
-  isRelease,
-  tokens,
-  usd,
-  versionState,
-} from "@/format";
+import { More } from "@/components/Card";
+import { agentHealth, fleetVersion, isRelease, versionState } from "@/fleet";
+import { ago, bytes, exact, tokens, usd } from "@/format";
 
 export function SessionsTable({
   sessions,

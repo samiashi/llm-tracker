@@ -1,7 +1,8 @@
 import { Fragment, useMemo } from "react";
 import type { MatrixCell } from "@/api";
 import { tokens, usd } from "@/format";
-import { Legend, More } from "@/components/parts";
+import { More } from "@/components/Card";
+import { Legend } from "@/components/chart";
 import { OTHER_FILL, SLOTS } from "@/palette";
 
 /** The key for columns past the palette; no normalised value can equal it. */

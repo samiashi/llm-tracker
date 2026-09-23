@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Group, SessionRow } from "@/api";
-import { BarList, Card, FAILED } from "@/components/parts";
+import { BarList } from "@/components/BarList";
+import { Card, FAILED } from "@/components/Card";
 import { SessionsTable } from "@/components/tables";
 
 afterEach(() => {

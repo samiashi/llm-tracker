@@ -1,11 +1,9 @@
 import { describe, expect, it, test } from "vitest";
+import { agentHealth, fleetVersion, isRelease, versionState } from "@/fleet";
 import {
-  agentHealth,
   ago,
   bytes,
   exact,
-  fleetVersion,
-  isRelease,
   shortDay,
   since,
   spansYears,
@@ -13,7 +11,6 @@ import {
   usd,
   utcMidnightAt,
   utcOffset,
-  versionState,
 } from "@/format";
 
 describe("tokens", () => {

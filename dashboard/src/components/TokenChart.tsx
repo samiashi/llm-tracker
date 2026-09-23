@@ -11,7 +11,7 @@ import type { Daily, Totals } from "@/api";
 import { shortDay, tokens, spansYears } from "@/format";
 import { fillDays } from "@/series";
 import type { DayRange } from "@/series";
-import { ChartTooltip, Legend } from "@/components/parts";
+import { ChartTooltip, Legend } from "@/components/chart";
 import { usePrefersReducedMotion } from "@/motion";
 
 /**
