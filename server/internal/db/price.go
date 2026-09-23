@@ -6,10 +6,18 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/samiashi/llm-tracker/schema"
+)
+
+// Where a stored cost came from, as cost_source records it: the harness's own
+// figure, the bundled table, or neither -- stored as zero and reported as
+// unpriced, never as free. The SQL spells the same values.
+const (
+	costNative   = "native"
+	costTable    = "table"
+	costUnpriced = "unpriced"
 )
 
 // priceEvent resolves a cost and says where it came from.
@@ -20,12 +28,12 @@ import (
 // can show unpriced volume rather than letting an unrecognised model look free.
 func (d *DB) priceEvent(e *schema.Event) (float64, string) {
 	if e.NativeCostUSD != nil {
-		return *e.NativeCostUSD, "native"
+		return *e.NativeCostUSD, costNative
 	}
 	if usd, ok := d.prices.Cost(e); ok {
-		return usd, "table"
+		return usd, costTable
 	}
-	return 0, "unpriced"
+	return 0, costUnpriced
 }
 
 // pricedColumns are the stored columns a table price is computed from, in the
@@ -98,10 +106,8 @@ func (d *DB) RepriceIfChanged(ctx context.Context, build string) (updated int, r
 	if err != nil {
 		return 0, false, err
 	}
-	var last string
-	err = d.read.QueryRowContext(ctx,
-		`SELECT value FROM setting WHERE key = ?`, pricedByKey).Scan(&last)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	last, err := setting(ctx, d.read, pricedByKey)
+	if err != nil {
 		return 0, false, err
 	}
 	if last == pricedBy {

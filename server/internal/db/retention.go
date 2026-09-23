@@ -59,13 +59,7 @@ const (
 // RetentionFloor returns the day before which a prune deleted raw events, or
 // "" if nothing has been pruned.
 func (d *DB) RetentionFloor(ctx context.Context) (string, error) {
-	var v string
-	err := d.read.QueryRowContext(ctx,
-		`SELECT value FROM setting WHERE key = ?`, retentionFloorKey).Scan(&v)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	return v, err
+	return setting(ctx, d.read, retentionFloorKey)
 }
 
 // Prune rolls up every day before the cutoff and deletes those raw events.
@@ -237,11 +231,11 @@ func raiseFloor(ctx context.Context, tx *sql.Tx, key, before string) error {
 // retention floor while this server prunes, and never below the legacy floor,
 // whose rollups hold no ids to tell a re-send from a new event.
 func (d *DB) ingestFloorTx(ctx context.Context, tx *sql.Tx) (string, error) {
-	legacy, err := settingTx(ctx, tx, legacyFloorKey)
+	legacy, err := setting(ctx, tx, legacyFloorKey)
 	if err != nil || !d.Pruning {
 		return legacy, err
 	}
-	floor, err := settingTx(ctx, tx, retentionFloorKey)
+	floor, err := setting(ctx, tx, retentionFloorKey)
 	return max(floor, legacy), err
 }
 

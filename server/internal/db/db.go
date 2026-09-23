@@ -115,11 +115,16 @@ func (d *DB) begin(ctx context.Context) (*sql.Tx, error) {
 // PriceTableVersion names the price table events are priced with.
 func (d *DB) PriceTableVersion() string { return d.prices.Version }
 
-// settingTx reads one setting inside an existing transaction, "" when unset.
-func settingTx(ctx context.Context, tx *sql.Tx, key string) (string, error) {
+// queryRower reads one row: the read pool, or a transaction that must see its
+// own writes.
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// setting reads one setting, "" when unset.
+func setting(ctx context.Context, q queryRower, key string) (string, error) {
 	var v string
-	err := tx.QueryRowContext(ctx,
-		`SELECT value FROM setting WHERE key = ?`, key).Scan(&v)
+	err := q.QueryRowContext(ctx, `SELECT value FROM setting WHERE key = ?`, key).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}

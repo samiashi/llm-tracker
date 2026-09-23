@@ -296,7 +296,7 @@ func (d *DB) storeEventsTx(ctx context.Context, tx *sql.Tx, login string, b *sch
 			return nil, err
 		}
 		cost, source := d.priceEvent(e)
-		if source == "unpriced" {
+		if source == costUnpriced {
 			res.Unpriced++
 		}
 		u := e.Usage
