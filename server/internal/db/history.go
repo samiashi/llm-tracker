@@ -55,7 +55,7 @@ const agentsQuery = `
 		FROM per
 	) o ON o.machine_id = m.id AND o.rn = 1
 	LEFT JOIN account a ON a.ref = o.account_ref
-	ORDER BY m.last_seen DESC`
+	ORDER BY m.last_seen DESC, m.id`
 
 // Agents lists every known machine, most recently synced first. It takes no
 // date window: a machine that went silent three weeks ago must not vanish from

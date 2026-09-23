@@ -150,36 +150,43 @@ func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow
 	}
 	where, args := w.where("")
 
-	// One pass over the range, then window functions to pick each session's
-	// dominant model and effort: whichever accounted for most of its tokens
+	// One pass over the range, grouped as finely as each session's dominant
+	// model and effort need: whichever accounted for most of its tokens
 	// describes its cost better than whichever was set last.
 	q := `
 		-- MATERIALIZED because scoped is read three times below, and inlined
-		-- each read walks the window again. Only the columns used, so the copy
-		-- stays small over a long range.
+		-- each read walks the window again.
 		WITH scoped AS MATERIALIZED (
-		  SELECT session_id, source, ts, account_ref, model, effort,
-		         total_tokens, cost_basis, cost_usd
-		  FROM event WHERE ` + where + ` AND session_id != ''
-		),
-		agg AS (
-		  SELECT session_id, source,
+		  SELECT session_id, source, model, effort,
 		         SUM(total_tokens) AS tokens,
 		         ` + billedUSD + ` AS billed,
 		         ` + rateCardUSD + ` AS ratecard,
 		         ` + unknownBasisUSD + ` AS unknown_basis,
 		         COUNT(*) AS events, MAX(ts) AS last_seen,
 		         MAX(account_ref) AS account_ref
+		  FROM event WHERE ` + where + ` AND session_id != ''
+		  GROUP BY session_id, source, model, effort
+		),
+		agg AS (
+		  SELECT session_id, source,
+		         SUM(tokens) AS tokens, SUM(billed) AS billed, SUM(ratecard) AS ratecard,
+		         SUM(unknown_basis) AS unknown_basis,
+		         SUM(events) AS events, MAX(last_seen) AS last_seen,
+		         MAX(account_ref) AS account_ref
 		  FROM scoped GROUP BY session_id, source
 		),
+		-- A tie goes to the one used last, then by name or scale, so a
+		-- session's model and effort cannot swap between two polls.
 		top_model AS (
 		  SELECT session_id, model,
-		         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY SUM(total_tokens) DESC) AS rn
+		         ROW_NUMBER() OVER (PARTITION BY session_id
+		           ORDER BY SUM(tokens) DESC, MAX(last_seen) DESC, model) AS rn
 		  FROM scoped WHERE model != '' GROUP BY session_id, model
 		),
 		top_effort AS (
 		  SELECT session_id, effort,
-		         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY SUM(total_tokens) DESC) AS rn
+		         ROW_NUMBER() OVER (PARTITION BY session_id
+		           ORDER BY SUM(tokens) DESC, MAX(last_seen) DESC, ` + effortOrder("effort") + `) AS rn
 		  FROM scoped WHERE effort != '' GROUP BY session_id, effort
 		)
 		SELECT a.session_id, a.source,
@@ -192,7 +199,8 @@ func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow
 		-- By whichever figure describes the session, never by their sum: seat
 		-- usage has no marginal cost. And not one column then the next, which
 		-- ranks every metered session above every seat one whatever the cost.
-		ORDER BY MAX(a.billed, a.ratecard, a.unknown_basis) DESC, a.tokens DESC
+		ORDER BY MAX(a.billed, a.ratecard, a.unknown_basis) DESC, a.tokens DESC,
+		         a.session_id, a.source
 		LIMIT ?`
 
 	rows, err := d.read.QueryContext(ctx, q, append(args, limit)...)

@@ -120,12 +120,12 @@ func (d *DB) DailyByModel(ctx context.Context, w Window, top int) ([]ModelDay, e
 		WITH ranked AS (
 		  SELECT model, SUM(total_tokens) AS t FROM event_daily
 		  WHERE ` + where + ` AND model != ''
-		  GROUP BY model ORDER BY t DESC LIMIT ?
+		  GROUP BY model ORDER BY t DESC, model LIMIT ?
 		)
 		SELECT day, model, SUM(total_tokens)
 		FROM event_daily WHERE ` + where + `
 		  AND model IN (SELECT model FROM ranked)
-		GROUP BY 1, 2 ORDER BY day`
+		GROUP BY 1, 2 ORDER BY 1, 2`
 	qargs := append(append([]any{}, args...), top)
 	qargs = append(qargs, args...)
 	rows, err := d.read.QueryContext(ctx, q, qargs...)
@@ -168,6 +168,8 @@ type ExportRow struct {
 func (d *DB) Export(ctx context.Context, w Window) ([]ExportRow, error) {
 	w = w.Normalise()
 	where, args := w.where("e.")
+	// Grouped by cost_basis as well (invariant 3): one cost_usd holds one
+	// basis, never seat usage added to metered spend.
 	rows, err := d.read.QueryContext(ctx, `
 		SELECT e.day, COALESCE(NULLIF(a.email,''), e.account_ref), e.source, e.model,
 		       e.effort, CASE WHEN e.is_subagent THEN 'subagent' ELSE 'main' END,
@@ -176,7 +178,7 @@ func (d *DB) Export(ctx context.Context, w Window) ([]ExportRow, error) {
 		       SUM(CASE WHEN e.cost_source = 'unpriced' THEN e.total_tokens ELSE 0 END)
 		FROM event_daily e LEFT JOIN account a ON a.ref = e.account_ref
 		WHERE `+where+`
-		GROUP BY 1,2,3,4,5,6,12 ORDER BY 1 DESC, 7 DESC`, args...)
+		GROUP BY 1,2,3,4,5,6,12 ORDER BY 1 DESC, 7 DESC, 2,3,4,5,6,12`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +255,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 	} else {
 		rowFilter = fmt.Sprintf(`%[1]s IN (
 		  SELECT %[1]s FROM event_daily WHERE %[2]s AND %[1]s != ''
-		  GROUP BY 1 ORDER BY SUM(total_tokens) DESC LIMIT ?)`, rowCol, where)
+		  GROUP BY 1 ORDER BY SUM(total_tokens) DESC, 1 LIMIT ?)`, rowCol, where)
 		qargs = append(append(qargs, args...), limit)
 	}
 	q := fmt.Sprintf(`
