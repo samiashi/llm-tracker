@@ -35,10 +35,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       -ldflags "-s -w -X main.version=${VERSION}" \
       -o /out/llm-tracker-server .
 
-# The data directory is created here, owned by the runtime user. Docker seeds
-# a fresh named volume from the image's contents at the mount point, so the
-# volume inherits this ownership -- without it the container starts as nonroot
-# against a root-owned mount and cannot open its own database.
+# /data belongs to the runtime user, so a volume Docker creates for it -- the
+# anonymous one VOLUME declares, or a named one -- starts with that owner and
+# the nonroot server can open its database. A bind mount keeps its host
+# directory's owner instead, which is why startup.sh sets that.
 RUN mkdir -p /out/data && chown 65532:65532 /out/data
 
 # ---- runtime ---------------------------------------------------------------
@@ -51,8 +51,9 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/llm-tracker-server /llm-tracker-server
 COPY --from=build --chown=65532:65532 /out/data /data
 
-# Declared so `docker run` without -v still warns rather than writing the
-# database into the container's own layer, where a redeploy deletes it.
+# Declared so a `docker run` with no mount keeps the database in a volume,
+# which outlives the container, not in the container's own layer, which is
+# removed with it.
 VOLUME ["/data"]
 
 EXPOSE 8790
