@@ -3,6 +3,9 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+
+	"github.com/samiashi/llm-tracker/schema"
 )
 
 // Queries over all of stored history. Agents and DayRange read event_daily,
@@ -23,8 +26,10 @@ type AgentRow struct {
 	Hostname     string `json:"hostname"`
 	Person       string `json:"person"`
 	AgentVersion string `json:"agent_version"`
-	LastSync     int64  `json:"last_sync"`
-	Events       int64  `json:"events"`
+	// Release is AgentVersion as a release: see Release.
+	Release  string `json:"release"`
+	LastSync int64  `json:"last_sync"`
+	Events   int64  `json:"events"`
 }
 
 // agentsQuery runs on every poll over all of history, so it counts from
@@ -72,9 +77,21 @@ func (d *DB) Agents(ctx context.Context) ([]AgentRow, error) {
 			&r.LastSync, &r.Events, &r.Person); err != nil {
 			return nil, err
 		}
+		r.Release = Release(r.AgentVersion)
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// Release is the release a build's version names, as "X.Y.Z", or "" for a
+// build from a working tree. The dashboard compares releases from this, so
+// schema.ReleaseVersion stays the one grammar for what is a release.
+func Release(version string) string {
+	r, ok := schema.ReleaseVersion(version)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d", r[0], r[1], r[2])
 }
 
 // DayRange reports the extent of stored history, so the dashboard can say how

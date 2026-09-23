@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -31,6 +32,42 @@ func TestABadDimensionNamesItselfAndTheChoices(t *testing.T) {
 				t.Errorf("GET %s: %q does not say %s", target, body.Error, w)
 			}
 		}
+	}
+}
+
+// The dashboard compares releases and knows no version grammar of its own, so
+// the server says which versions are releases: "X.Y.Z", or "" for a build
+// from a working tree, which is no upgrade target and nothing to be behind.
+func TestOnlyAReleaseIsReportedAsOne(t *testing.T) {
+	for version, want := range map[string]string{
+		"v1.4.0": "1.4.0", "1.4.0": "1.4.0", "v1.4": "", "v1.4.0-rc1": "",
+		"v1.4.0-3-g6387414-dirty": "", "6387414-dirty": "", "dev": "", "": "",
+	} {
+		t.Run(fmt.Sprintf("%q", version), func(t *testing.T) {
+			s := newServer(t)
+			s.Version = version
+			if _, err := s.DB.Ingest(context.Background(), &schema.Batch{
+				V: schema.Version, MachineID: "m", AgentVersion: version,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			var agents struct {
+				Agents []struct {
+					Release string `json:"release"`
+				} `json:"agents"`
+			}
+			getJSON(t, s, "/v1/agents", &agents)
+			var summary struct {
+				ServerRelease *string `json:"server_release"`
+			}
+			getJSON(t, s, "/v1/summary", &summary)
+			if len(agents.Agents) != 1 || agents.Agents[0].Release != want {
+				t.Errorf("agent on %q reported as release %+v, want %q", version, agents.Agents, want)
+			}
+			if summary.ServerRelease == nil || *summary.ServerRelease != want {
+				t.Errorf("server on %q reported as release %v, want %q", version, summary.ServerRelease, want)
+			}
+		})
 	}
 }
 

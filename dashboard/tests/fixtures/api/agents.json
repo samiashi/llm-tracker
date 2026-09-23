@@ -6,7 +6,8 @@
       "hostname": "host",
       "last_sync": 1781000000,
       "machine_id": "m",
-      "person": "dev@example.com"
+      "person": "dev@example.com",
+      "release": "1.4.0"
     }
   ],
   "now": 1781000000,

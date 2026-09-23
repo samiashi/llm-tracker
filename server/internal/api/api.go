@@ -119,6 +119,9 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 
 		"history_first_day": first,
 		"history_last_day":  last,
+		// The release every agent is compared against, "" for a build that
+		// is not one.
+		"server_release": db.Release(s.Version),
 	})
 }
 

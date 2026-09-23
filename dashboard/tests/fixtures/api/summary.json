@@ -1,6 +1,7 @@
 {
   "history_first_day": "2026-06-15",
   "history_last_day": "2026-06-15",
+  "server_release": "1.4.0",
   "totals": {
     "billed_tokens": 0,
     "billed_usd": 0,
