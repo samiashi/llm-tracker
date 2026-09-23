@@ -498,3 +498,60 @@ func TestUsageAfterASignOutIsNotCreditedToTheAccountBefore(t *testing.T) {
 			e.AccountRef, e.CostBasis)
 	}
 }
+
+// An archive on collector 9 re-reads Continue under the machine-keyed ids and
+// then drops each old row for its replacement; left beside it, the record
+// counts twice.
+func TestUpgradingToTenKeepsEachContinueRecordOnce(t *testing.T) {
+	ctx := context.Background()
+	log := slog.New(slog.DiscardHandler)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	st, _ := newStore(t)
+
+	p := filepath.Join(home, ".continue/dev_data/0.2.0/tokensGenerated.jsonl")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"timestamp":"2026-09-20T10:00:00Z","model":"claude-opus-5","promptTokens":100,"generatedTokens":10}` + "\n"
+	if err := os.WriteFile(p, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The archive as collector 9 left it: the record under its old id, and
+	// the file read to its end.
+	for k, v := range map[string]string{versionKey: "9", "machine_id": "m"} {
+		if err := st.SetMeta(ctx, k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const old = "0.2.0/tokensGenerated.jsonl#0"
+	e := schema.Event{V: schema.Version, ID: schema.MakeID(schema.SourceContinue, old), NativeID: old,
+		Source: schema.SourceContinue, TS: time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC), MachineID: "m",
+		Model: "claude-opus-5", Usage: schema.Usage{InputTokens: 100, OutputTokens: 10}, Collector: 9}
+	if _, err := st.CommitFile(ctx, p, int64(len(line)), int64(len(line)), []store.Record{{
+		ID: e.ID, TS: e.TS, TotalTokens: e.Usage.TotalTokens(), Collector: 9, Payload: e,
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Run(ctx, st, home, log); err != nil {
+		t.Fatal(err)
+	}
+
+	payloads, err := st.SourcePayloads(ctx, string(schema.SourceContinue))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, raw := range payloads {
+		var got schema.Event
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, got.NativeID)
+	}
+	if want := []string{"m:" + old}; !slices.Equal(ids, want) {
+		t.Fatalf("stored %q, want only %q", ids, want)
+	}
+}

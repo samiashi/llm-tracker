@@ -127,7 +127,10 @@ func (a MyHarness) Collect(ctx context.Context, c *Ctx) (Result, error) {
 atomic commit. `at` is the line's byte offset, and it is usually what an event
 should be keyed on: for a format with no id of its own it is the only stable
 identifier, and a key built on something that moves — an array index, an
-absolute path — re-keys every event when it does. A walk of your own goes
+absolute path — re-keys every event when it does. Such a key must name the
+machine too (`c.MachineID`): every file starts at offset 0 and the server
+upserts on the id, so two colleagues' records would merge, as Continue's did
+before collector 10. A walk of your own goes
 through `walkRoot`, which also descends a root that is itself a symlink.
 `openAIUsage.normalise()` folds the spellings every OpenAI-compatible provider
 uses.

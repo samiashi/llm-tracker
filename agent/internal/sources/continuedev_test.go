@@ -68,7 +68,7 @@ func TestContinueProviderGuessStaysConservative(t *testing.T) {
 	for model, want := range map[string]string{
 		"claude-opus-5":    "anthropic",
 		"gpt-6-astra":      "openai",
-		"gemini-3-pro":     "google",
+		"gemini-3-pro":     "gemini", // the price table's endpoint for Google's API
 		"llama-3-70b":      "",
 		"some-local-thing": "",
 	} {

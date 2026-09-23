@@ -80,14 +80,16 @@ func (a ContinueDev) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			}
 
 			// No record id, and second-precision timestamps, so identity is
-			// the file's path under dev_data and the byte the line starts at.
-			// Not the basename: every version directory holds a
-			// tokensGenerated.jsonl, and their offsets would collide.
+			// the machine, the file's path under dev_data and the byte the
+			// line starts at. Not the basename: every version directory holds
+			// a tokensGenerated.jsonl, and their offsets would collide. Not
+			// without the machine: every file starts at offset 0, and the
+			// server would merge two colleagues' records into one.
 			rel, err := filepath.Rel(root, path)
 			if err != nil {
 				rel = filepath.Base(path)
 			}
-			nid := filepath.ToSlash(rel) + "#" + strconv.FormatInt(at, 10)
+			nid := c.MachineID + ":" + filepath.ToSlash(rel) + "#" + strconv.FormatInt(at, 10)
 
 			ev := schema.Event{
 				V: schema.Version, ID: schema.MakeID(schema.SourceContinue, nid), NativeID: nid,

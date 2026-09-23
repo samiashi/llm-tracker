@@ -21,7 +21,9 @@ import "github.com/samiashi/llm-tracker/schema"
 //	   attributes each response from the rollout's own header and time;
 //	   Continue keys on the file's path under dev_data; Claude Code and
 //	   Cowork count the attempt a model fallback abandoned.
-//	10: opencode marks a subagent by its child session, not its agent's name.
+//	10: opencode marks a subagent by its child session, not its agent's name;
+//	    Continue keys each record on the machine too, and names Google's API
+//	    "gemini", as pricing does.
 const CollectorVersion = 10
 
 // backfillOnUpgrade names, for each collector version, the sources whose
@@ -49,6 +51,7 @@ var backfillOnUpgrade = map[int][]schema.Source{
 	},
 	10: {
 		schema.SourceOpenCode, // subagent flag corrected
+		schema.SourceContinue, // re-keyed on the machine; provider corrected
 	},
 }
 
@@ -76,8 +79,9 @@ var purgeOnUpgrade = map[int][]schema.Source{
 // Unlike a purge this keeps a row whose record is gone from disk, which is why
 // harnesses that let the user delete their history are listed here.
 var dedupeOnUpgrade = map[int][]schema.Source{
-	5: {schema.SourceCline, schema.SourceRooCode, schema.SourceContinue},
-	9: {schema.SourceContinue},
+	5:  {schema.SourceCline, schema.SourceRooCode, schema.SourceContinue},
+	9:  {schema.SourceContinue},
+	10: {schema.SourceContinue},
 }
 
 // SourcesNeedingPurge returns the sources whose rows must be discarded, rather

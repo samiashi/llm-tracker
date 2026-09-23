@@ -90,14 +90,18 @@ func TestEverySourcePurgedOnUpgradeKeepsItsHistory(t *testing.T) {
 	}
 }
 
-// Version 10 corrected opencode's subagent flag. The bump alone changes only
-// conflict resolution: without the re-read, every stored row keeps the flag
-// it was read with.
+// Version 10 corrected opencode's subagent flag and re-keyed Continue. The
+// bump alone changes only conflict resolution: without the re-read, stored
+// rows keep what they were read with, and without the dedupe every Continue
+// record is stored twice.
 func TestCrossingTenReReadsWhatItCorrected(t *testing.T) {
 	got := SourcesNeedingBackfill(9)
-	for _, s := range []schema.Source{schema.SourceOpenCode} {
+	for _, s := range []schema.Source{schema.SourceOpenCode, schema.SourceContinue} {
 		if !slices.Contains(got, s) {
 			t.Errorf("SourcesNeedingBackfill(9) = %v, missing %s", got, s)
 		}
+	}
+	if got := SourcesNeedingDedupe(9); !slices.Equal(got, []schema.Source{schema.SourceContinue}) {
+		t.Errorf("SourcesNeedingDedupe(9) = %v, want continue: version 10 re-keys it", got)
 	}
 }

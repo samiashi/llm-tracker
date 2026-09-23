@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/samiashi/llm-tracker/schema"
@@ -12,7 +13,8 @@ import (
 // record since removed from disk keeps the only row it has.
 //
 // The collector calls it after the re-read that follows an upgrade listed in
-// dedupeOnUpgrade. Server migration 00016 applies the same rules.
+// dedupeOnUpgrade. The server's retire and refuse triggers apply the same
+// rules to its own copy.
 func Superseded(src schema.Source, events []schema.Event) []string {
 	switch src {
 	case schema.SourceCline, schema.SourceRooCode:
@@ -48,38 +50,62 @@ func supersededCline(events []schema.Event) []string {
 	return out
 }
 
-// supersededContinue pairs Continue's two older keys with the current one,
-// <path under dev_data>#<offset>, for a record with the same model and usage.
-// Before collector 5 a record was <absolute path>#<time>#<model>, which any
-// later row at the same time replaces. Until collector 9 it was
-// tokensGenerated.jsonl#<offset>, which the current row for the same offset
-// replaces; time is not compared there, since an undated record takes the
-// file's changing mtime. A file directly under dev_data keeps that form.
+// supersededContinue pairs each of Continue's older keys with the row that
+// replaces it, telling keys apart by shape and by the collector that wrote
+// them:
+//
+//   - before collector 5, <absolute path>#<time>#<model>, replaced by any
+//     later row from the same machine with the same time, model and counts;
+//   - collectors 5 to 8, tokensGenerated.jsonl#<offset>, replaced by a later
+//     row from the same machine with the same model and counts, keyed on the
+//     same offset under a directory (".../tokensGenerated.jsonl#<offset>") or
+//     a machine ("<machine>:tokensGenerated.jsonl#<offset>"). Time is not
+//     compared: an undated record takes the file's changing mtime;
+//   - collector 9, <path under dev_data>#<offset>, replaced by the row
+//     <machine>:<the same> from the same machine. A file directly under
+//     dev_data has no directory in its key, which is why the collector, not
+//     the shape, separates it from a 5-to-8 key: taken for one, the current
+//     row of a root-level file would be deleted.
+//
+// Collector 10 keys <machine>:<path under dev_data>#<offset>.
 func supersededContinue(events []schema.Event) []string {
 	type record struct {
-		model string
-		usage schema.Usage
+		machine, model string
+		in, out        int64
 	}
-	key := func(e schema.Event) record { return record{e.Model, e.Usage} }
+	key := func(e schema.Event) record {
+		return record{e.MachineID, e.Model, e.Usage.InputTokens, e.Usage.OutputTokens}
+	}
+	type row struct{ machine, native string }
 
 	later := map[record][]schema.Event{}
+	keyed := map[row]bool{}
 	for _, e := range events {
+		keyed[row{e.MachineID, e.NativeID}] = true
 		if !strings.HasPrefix(e.NativeID, "/") {
 			later[key(e)] = append(later[key(e)], e)
 		}
 	}
+	replaced := func(e schema.Event, by func(n schema.Event) bool) bool {
+		return slices.ContainsFunc(later[key(e)], by)
+	}
+
 	var out []string
 	for _, e := range events {
-		pathKeyed := strings.HasPrefix(e.NativeID, "/")
-		if !pathKeyed && strings.Contains(e.NativeID, "/") {
-			continue // current
+		var gone bool
+		switch {
+		case strings.HasPrefix(e.NativeID, "/"):
+			gone = replaced(e, func(n schema.Event) bool { return n.TS.Equal(e.TS) })
+		case e.Collector < 9:
+			gone = replaced(e, func(n schema.Event) bool {
+				return strings.HasSuffix(n.NativeID, "/"+e.NativeID) ||
+					strings.HasSuffix(n.NativeID, ":"+e.NativeID)
+			})
+		case e.Collector == 9:
+			gone = keyed[row{e.MachineID, e.MachineID + ":" + e.NativeID}]
 		}
-		for _, n := range later[key(e)] {
-			if (pathKeyed && n.TS.Equal(e.TS)) ||
-				(!pathKeyed && strings.HasSuffix(n.NativeID, "/"+e.NativeID)) {
-				out = append(out, e.ID)
-				break
-			}
+		if gone {
+			out = append(out, e.ID)
 		}
 	}
 	return out

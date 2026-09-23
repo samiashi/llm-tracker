@@ -39,7 +39,7 @@ func modelProvider(model string) string {
 	case strings.HasPrefix(m, "gpt"), strings.HasPrefix(m, "o1"), strings.HasPrefix(m, "o3"):
 		return "openai"
 	case strings.HasPrefix(m, "gemini"):
-		return "google"
+		return "gemini"
 	}
 	return ""
 }
