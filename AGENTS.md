@@ -69,13 +69,12 @@ wrong numbers, and the comment above the code says which.
    checking this, and a migration that rebuilds `event` must recreate the
    triggers. Three queries are exempt because they need something a
    day-level rollup cannot hold — `Heatmap` (hour of day), `TopSessions`
-   (session id) and `SourceHealth` (per-event timestamps) — and so see only
+   (session id) and `SourceHealth` (the last event's time) — and so see only
    what has not been rolled up, by design. Anything answering a windowed
    _total_ belongs on the view; adding a new one against `event` silently
-   under-reports every pruned day. `Agents` and `DayRange` read the view's two
-   branches (`event`, `daily_rollup`) directly for speed, as `EarliestRawDay`
-   does to find where rollups end, so a branch added to the view must be added
-   there too.
+   under-reports every pruned day. `EarliestRawDay` and `RollupsBefore` read
+   `event` and `daily_rollup` directly to find where rollups end, so a branch
+   added to the view must be added there too.
 6. **Reads use `d.read`, writes use `d.write`.** One pooled connection makes
    dashboard reads queue behind ingest; that took reads to 30 seconds.
 7. **Reasoning effort is ordinal.** Sort by `schema.EffortRank`, never by

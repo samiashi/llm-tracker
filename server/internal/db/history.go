@@ -5,9 +5,10 @@ import (
 	"database/sql"
 )
 
-// Queries over all of stored history that read event_daily's two branches,
-// event and daily_rollup, separately for speed. A branch added to the view
-// is added to each of these.
+// Queries over all of stored history. Agents and DayRange read event_daily,
+// small enough at day grain to read whole on every poll. EarliestRawDay and
+// RollupsBefore ask where the rollups end, so they read event and daily_rollup
+// themselves: a branch added to the view is added to them.
 
 // AgentRow is one machine running the collector.
 //
@@ -27,20 +28,13 @@ type AgentRow struct {
 	Events       int64  `json:"events"`
 }
 
-// agentsQuery runs on every poll over all of history.
+// agentsQuery runs on every poll over all of history, so it counts from
+// event_daily -- both branches, so a pruned day still counts -- and never
+// groups event's rows.
 const agentsQuery = `
-	-- event_daily's two branches, each grouped before the union: through
-	-- the view SQLite sorts every row of history on every poll, where
-	-- idx_event_machine_account reads them in order. Both branches, so a
-	-- pruned day still counts.
 	WITH per AS MATERIALIZED (
-	  SELECT machine_id, account_ref, SUM(n) AS n FROM (
-	    SELECT machine_id, account_ref, COUNT(*) AS n
-	    FROM event GROUP BY machine_id, account_ref
-	    UNION ALL
-	    SELECT machine_id, account_ref, SUM(events)
-	    FROM daily_rollup GROUP BY machine_id, account_ref
-	  ) GROUP BY machine_id, account_ref
+	  SELECT machine_id, account_ref, SUM(events) AS n
+	  FROM event_daily GROUP BY machine_id, account_ref
 	)
 	SELECT m.id, m.hostname, m.agent_version, m.first_seen, m.last_seen,
 	       COALESCE(t.events, 0),
@@ -92,15 +86,8 @@ func (d *DB) DayRange(ctx context.Context) (first, last string, err error) {
 	return f.String, l.String, err
 }
 
-// dayRangeQuery reads event_daily's two branches, one index seek each: SQLite
-// answers a lone MIN or MAX from an index, but a pair of them over the view
-// scans all of history on every poll.
-const dayRangeQuery = `
-	SELECT MIN(d), MAX(d) FROM (
-	  SELECT (SELECT MIN(day) FROM event) AS d
-	  UNION ALL SELECT (SELECT MAX(day) FROM event)
-	  UNION ALL SELECT (SELECT MIN(day) FROM daily_rollup)
-	  UNION ALL SELECT (SELECT MAX(day) FROM daily_rollup))`
+// dayRangeQuery is DayRange's statement.
+const dayRangeQuery = `SELECT MIN(day), MAX(day) FROM event_daily`
 
 // EarliestRawDay is the first day from which every day is answerable from
 // individual events, or "" when there are none.

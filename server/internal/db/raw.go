@@ -19,15 +19,20 @@ type SourceHealth struct {
 	Events    int64  `json:"events"`
 }
 
-// sourceHealthQuery runs on every poll over all of history, so
-// idx_event_source_machine_ts must serve the grouping in order rather than a
-// sort of every row.
+// sourceHealthQuery runs on every poll over all of history, so it counts from
+// event_day and finds each last event by one seek down
+// idx_event_source_machine_ts, never grouping event's rows.
 const sourceHealthQuery = `
-	SELECT source, machine_id, MAX(ts), COUNT(*)
-	FROM event GROUP BY source, machine_id ORDER BY MAX(ts) DESC`
+	SELECT g.source, g.machine_id,
+	       COALESCE((SELECT MAX(ts) FROM event
+	                 WHERE source = g.source AND machine_id = g.machine_id), 0) AS last_event,
+	       g.events
+	FROM (SELECT source, machine_id, SUM(events) AS events
+	      FROM event_day GROUP BY source, machine_id) g
+	ORDER BY last_event DESC, g.source, g.machine_id`
 
-// SourceHealth reads raw events because it needs per-event timestamps, so it
-// only sees the retention window -- which is what it is for.
+// SourceHealth reads live events only, never rollups, because it needs
+// per-event timestamps: it sees the retention window, which is what it is for.
 func (d *DB) SourceHealth(ctx context.Context) ([]SourceHealth, error) {
 	rows, err := d.read.QueryContext(ctx, sourceHealthQuery)
 	if err != nil {
