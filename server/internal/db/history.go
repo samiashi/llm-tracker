@@ -23,7 +23,6 @@ type AgentRow struct {
 	Hostname     string `json:"hostname"`
 	Person       string `json:"person"`
 	AgentVersion string `json:"agent_version"`
-	FirstSeen    int64  `json:"first_seen"`
 	LastSync     int64  `json:"last_sync"`
 	Events       int64  `json:"events"`
 }
@@ -36,7 +35,7 @@ const agentsQuery = `
 	  SELECT machine_id, account_ref, SUM(events) AS n
 	  FROM event_daily GROUP BY machine_id, account_ref
 	)
-	SELECT m.id, m.hostname, m.agent_version, m.first_seen, m.last_seen,
+	SELECT m.id, m.hostname, m.agent_version, m.last_seen,
 	       COALESCE(t.events, 0),
 	       COALESCE(NULLIF(a.email, ''), COALESCE(o.account_ref, ''))
 	FROM machine m
@@ -70,7 +69,7 @@ func (d *DB) Agents(ctx context.Context) ([]AgentRow, error) {
 	for rows.Next() {
 		var r AgentRow
 		if err := rows.Scan(&r.MachineID, &r.Hostname, &r.AgentVersion,
-			&r.FirstSeen, &r.LastSync, &r.Events, &r.Person); err != nil {
+			&r.LastSync, &r.Events, &r.Person); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

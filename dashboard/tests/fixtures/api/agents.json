@@ -3,7 +3,6 @@
     {
       "agent_version": "v1.4.0",
       "events": 1,
-      "first_seen": 1781000000,
       "hostname": "host",
       "last_sync": 1781000000,
       "machine_id": "m",

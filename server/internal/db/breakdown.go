@@ -17,26 +17,19 @@ import (
 // Group is one row of a breakdown: a key plus its totals.
 type Group struct {
 	Key    string `json:"key"`
-	Label  string `json:"label,omitempty"`
 	Totals Totals `json:"totals"`
 }
 
 // breakdown runs a grouped totals query, largest first. dimension is chosen
 // from an allow-list by the caller, never interpolated from user input.
-func (d *DB) breakdown(ctx context.Context, w Window, dimension, joinSQL, labelExpr string) ([]Group, error) {
+func (d *DB) breakdown(ctx context.Context, w Window, dimension, joinSQL string) ([]Group, error) {
 	w = w.Normalise()
-	label := "''"
-	if labelExpr != "" {
-		label = labelExpr
-	}
-	where, args := w.where("event.")
-	// Ordered by tokens, the length every caller draws. MIN(label) because
-	// the label is not grouped, and SQLite fills a bare column from whichever
-	// row it read last: a model served both directly and through a gateway
-	// would show a provider that changes between two loads.
-	q := fmt.Sprintf(`SELECT %s, MIN(%s), %s FROM event_daily event %s WHERE %s
-	                  GROUP BY %s ORDER BY SUM(event.total_tokens) DESC`,
-		dimension, label, totalsSelect, joinSQL, where, dimension)
+	where, args := w.where("e.")
+	// Ordered by tokens, the length every caller draws, then by key, so equal
+	// rows keep their places between two loads.
+	q := fmt.Sprintf(`SELECT %s, %s FROM event_daily e %s WHERE %s
+	                  GROUP BY 1 ORDER BY SUM(e.total_tokens) DESC, 1`,
+		dimension, totalsSelect, joinSQL, where)
 	rows, err := d.read.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -46,11 +39,11 @@ func (d *DB) breakdown(ctx context.Context, w Window, dimension, joinSQL, labelE
 	out := make([]Group, 0)
 	for rows.Next() {
 		var g Group
-		var key, lbl sql.NullString
-		if err := rows.Scan(append([]any{&key, &lbl}, totalsDest(&g.Totals)...)...); err != nil {
+		var key sql.NullString
+		if err := rows.Scan(append([]any{&key}, totalsDest(&g.Totals)...)...); err != nil {
 			return nil, err
 		}
-		g.Key, g.Label = key.String, lbl.String
+		g.Key = key.String
 		if g.Key == "" {
 			g.Key = unknownKey
 		}
@@ -61,16 +54,16 @@ func (d *DB) breakdown(ctx context.Context, w Window, dimension, joinSQL, labelE
 
 // breakdownDims is Breakdown's allow-list: the SQL for each dimension a
 // request may name, so the query string never reaches the database.
-var breakdownDims = map[string]struct{ expr, join, label string }{
+var breakdownDims = map[string]struct{ expr, join string }{
 	// By email rather than by account: one person holds several accounts, and
 	// grouped by account_ref they would appear once per login with their usage
 	// split across the rows.
-	"person": {"COALESCE(NULLIF(account.email,''), event.account_ref)",
-		"LEFT JOIN account ON account.ref = event.account_ref", ""},
-	"model":   {"event.model", "", "event.provider"},
-	"source":  {"event.source", "", "event.surface"},
-	"surface": {"event.surface", "", ""},
-	"origin":  {origin("event."), "", ""},
+	"person": {"COALESCE(NULLIF(account.email,''), e.account_ref)",
+		"LEFT JOIN account ON account.ref = e.account_ref"},
+	"model":   {"e.model", ""},
+	"source":  {"e.source", ""},
+	"surface": {"e.surface", ""},
+	"origin":  {origin("e."), ""},
 }
 
 // origin separates main-thread work from subagent fan-out, under the labels
@@ -85,7 +78,7 @@ func (d *DB) Breakdown(ctx context.Context, w Window, by string) ([]Group, error
 	if !ok {
 		return nil, unknownDimension("by", by, breakdownDims)
 	}
-	return d.breakdown(ctx, w, dim.expr, dim.join, dim.label)
+	return d.breakdown(ctx, w, dim.expr, dim.join)
 }
 
 // unknownDimension names the request parameter, the value it carried and the
@@ -219,7 +212,6 @@ type MatrixCell struct {
 	BilledUSD       float64 `json:"billed_usd"`
 	RateCardUSD     float64 `json:"rate_card_usd"`
 	UnknownBasisUSD float64 `json:"unknown_basis_usd"`
-	Events          int64   `json:"events"`
 }
 
 // ErrUnknownDimension marks a caller's mistake rather than a server fault, so
@@ -277,8 +269,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 		       SUM(total_tokens),
 		       `+billedUSD+`,
 		       `+rateCardUSD+`,
-		       `+unknownBasisUSD+`,
-		       SUM(events)
+		       `+unknownBasisUSD+`
 		FROM event_daily
 		WHERE %[3]s AND %[4]s
 		GROUP BY 1, 2 ORDER BY %[5]s`, rowCol, colCol, where, rowFilter, order)
@@ -293,7 +284,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 	for rowsRes.Next() {
 		var c MatrixCell
 		if err := rowsRes.Scan(&c.Row, &c.Col, &c.Tokens,
-			&c.BilledUSD, &c.RateCardUSD, &c.UnknownBasisUSD, &c.Events); err != nil {
+			&c.BilledUSD, &c.RateCardUSD, &c.UnknownBasisUSD); err != nil {
 			return nil, err
 		}
 		res.Cells = append(res.Cells, c)

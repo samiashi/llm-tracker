@@ -3,7 +3,6 @@
     {
       "billed_usd": 0,
       "col": "high",
-      "events": 1,
       "rate_card_usd": 0.005,
       "row": "claude-opus-5",
       "tokens": 1000,

@@ -83,7 +83,6 @@ export type MatrixCell = {
   billed_usd: number;
   rate_card_usd: number;
   unknown_basis_usd?: number;
-  events: number;
 };
 
 /** Why a detected harness has no adapter. Widened for forward compatibility. */
@@ -121,7 +120,6 @@ export type AgentRow = {
   hostname: string;
   person: string;
   agent_version: string;
-  first_seen: number;
   last_sync: number;
   events: number;
 };
