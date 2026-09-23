@@ -1,0 +1,18 @@
+# Everything the build produces, holds secrets, or would bust the cache.
+#
+# Docker matches the whole context-relative path and * does not cross a /, so
+# a pattern meant for every depth needs a leading **: a bare `.env` would
+# exclude only ./.env, where .gitignore's matches at any level.
+.git
+.github
+**/bin/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/.env
+**/.env.*
+**/node_modules
+# Built by the dashboard stage; a local build must never be embedded instead.
+server/internal/web/dist
+docs/
+*.md
