@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 
@@ -59,11 +60,11 @@ func (a Copilot) Collect(ctx context.Context, c *Ctx) (Result, error) {
 				return
 			}
 
-			usage, model, nid := e.Usage, e.Model, firstNonEmpty(e.RequestID, e.ID)
+			usage, model, nid := e.Usage, e.Model, cmp.Or(e.RequestID, e.ID)
 			if usage == nil && e.Response != nil {
 				usage = e.Response.Usage
-				model = firstNonEmpty(model, e.Response.Model)
-				nid = firstNonEmpty(nid, e.Response.ID)
+				model = cmp.Or(model, e.Response.Model)
+				nid = cmp.Or(nid, e.Response.ID)
 			}
 			if usage == nil && e.Turn != nil {
 				usage = e.Turn.Usage

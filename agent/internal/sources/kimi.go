@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"os"
@@ -82,7 +83,7 @@ func (a Kimi) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			return
 		}
 
-		nid := firstNonEmpty(w.RequestID, w.ID)
+		nid := cmp.Or(w.RequestID, w.ID)
 		if nid == "" {
 			return
 		}
@@ -121,13 +122,4 @@ func parentDir(p string) string {
 		return p[:i]
 	}
 	return p
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }

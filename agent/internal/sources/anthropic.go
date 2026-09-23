@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -139,32 +140,6 @@ func (l *anthropicLine) nativeID() string {
 	return l.UUID
 }
 
-// inferProvider guesses the provider from the model name.
-//
-// Claude Code records no base URL, so a model reached through
-// ANTHROPIC_BASE_URL is indistinguishable from a native one except by name.
-// Anything unrecognised stays "unknown" so it shows up as unpriced rather than
-// being quietly charged at Anthropic rates.
-func inferProvider(model string) string {
-	m := strings.ToLower(model)
-	switch {
-	case strings.HasPrefix(m, "claude"):
-		return "anthropic"
-	case strings.HasPrefix(m, "glm"):
-		return "zai"
-	case strings.HasPrefix(m, "kimi"):
-		return "moonshotai"
-	case strings.HasPrefix(m, "deepseek"):
-		return "deepseek"
-	case strings.HasPrefix(m, "gpt"), strings.HasPrefix(m, "o1"), strings.HasPrefix(m, "o3"):
-		return "openai"
-	case m == "":
-		return ""
-	default:
-		return "unknown"
-	}
-}
-
 func surfaceFor(entrypoint string) schema.Surface {
 	switch strings.ToLower(entrypoint) {
 	case "cli":
@@ -229,7 +204,7 @@ func (l *anthropicLine) toEvent(src schema.Source, c *Ctx, accountRef string) (s
 		// "not_available" is the absent marker, not a geography.
 		InferenceGeo: strings.TrimSuffix(u.InferenceGeo, "not_available"),
 		Speed:        u.Speed,
-		Effort:       firstNonEmpty(l.PerTurnEffort, l.Effort),
+		Effort:       cmp.Or(l.PerTurnEffort, l.Effort),
 	}, true
 }
 
@@ -251,7 +226,7 @@ func (l *anthropicLine) abandonedAttempts(response schema.Event) []schema.Event 
 		ev := response
 		ev.NativeID = response.NativeID + "#" + strconv.Itoa(i)
 		ev.ID = schema.MakeID(response.Source, ev.NativeID)
-		ev.Model = firstNonEmpty(it.Model, "unknown")
+		ev.Model = cmp.Or(it.Model, "unknown")
 		ev.Provider = inferProvider(ev.Model)
 		ev.Usage = usage
 		out = append(out, ev)

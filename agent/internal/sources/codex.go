@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -216,7 +217,7 @@ func (a Codex) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			fc.Provider = m.ModelProvider
 			// The session a thread belongs to, which is also what its
 			// token_usage_record lines carry: a subagent shares its root's.
-			fc.SessionID = firstNonEmpty(m.SessionID, m.ID)
+			fc.SessionID = cmp.Or(m.SessionID, m.ID)
 			if m.CWD != "" {
 				fc.CWD = m.CWD
 			}
@@ -247,7 +248,7 @@ func (a Codex) Collect(ctx context.Context, c *Ctx) (Result, error) {
 				stageFileCtx(c, path, *fc)
 			}
 			acct := c.AccountRefAt("openai", ts)
-			if ev, ok := codexEvent(c, fc, acct, r.ResponseID, firstNonEmpty(r.SessionID, fc.SessionID), r.Usage, ts); ok {
+			if ev, ok := codexEvent(c, fc, acct, r.ResponseID, cmp.Or(r.SessionID, fc.SessionID), r.Usage, ts); ok {
 				c.emit(ev)
 			}
 

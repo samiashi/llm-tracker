@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/samiashi/llm-tracker/schema"
 )
@@ -102,20 +101,4 @@ func (a ContinueDev) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			ev.AccountRef = c.AccountRefAt(provider, ts)
 			c.emit(ev)
 		})
-}
-
-// modelProvider guesses a provider from a model name for the records where
-// Continue omits it. Kept deliberately small: a wrong guess prices an event
-// against the wrong table, so anything unrecognised stays empty.
-func modelProvider(model string) string {
-	m := strings.ToLower(model)
-	switch {
-	case strings.HasPrefix(m, "claude"):
-		return "anthropic"
-	case strings.HasPrefix(m, "gpt"), strings.HasPrefix(m, "o1"), strings.HasPrefix(m, "o3"):
-		return "openai"
-	case strings.HasPrefix(m, "gemini"):
-		return "google"
-	}
-	return ""
 }

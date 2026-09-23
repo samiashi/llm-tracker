@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 
@@ -55,13 +56,13 @@ func (a DeepSeekHarness) Collect(ctx context.Context, c *Ctx) (Result, error) {
 				return
 			}
 
-			usage, model, nid := l.Usage, l.Model, firstNonEmpty(l.RequestID, l.ID)
+			usage, model, nid := l.Usage, l.Model, cmp.Or(l.RequestID, l.ID)
 			if usage == nil && l.Response != nil {
 				usage = l.Response.Usage
 				if model == "" {
 					model = l.Response.Model
 				}
-				nid = firstNonEmpty(nid, l.Response.ID)
+				nid = cmp.Or(nid, l.Response.ID)
 			}
 			if usage == nil || usage.empty() || nid == "" {
 				return

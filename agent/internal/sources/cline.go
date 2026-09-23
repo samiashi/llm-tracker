@@ -1,13 +1,13 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
 )
@@ -197,8 +197,8 @@ func (a clineFamily) readTask(c *Ctx, path, taskID string) (complete bool, err e
 			continue
 		}
 
-		prov := firstNonEmpty(provider, req.APIProtocol)
-		mdl := firstNonEmpty(model, req.Model)
+		prov := cmp.Or(provider, req.APIProtocol)
+		mdl := cmp.Or(model, req.Model)
 		if mdl == "" {
 			mdl = "unknown"
 		}
@@ -230,13 +230,4 @@ func (a clineFamily) readTask(c *Ctx, path, taskID string) (complete bool, err e
 		c.emit(ev)
 	}
 	return true, nil
-}
-
-// unixMilliOrZero converts Cline's millisecond timestamps, tolerating the
-// zero that a malformed entry yields rather than dating it to 1970.
-func unixMilliOrZero(ms int64) time.Time {
-	if ms <= 0 {
-		return time.Time{}
-	}
-	return time.UnixMilli(ms).UTC()
 }

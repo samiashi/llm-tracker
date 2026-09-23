@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -118,7 +119,7 @@ func (a Gemini) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			// between releases or each session is stored twice. Two id-less
 			// files with one basename in different projects share it, and the
 			// MAX rule keeps the larger.
-			nid := firstNonEmpty(s.SessionID, s.ID, strings.TrimSuffix(base, ".json"))
+			nid := cmp.Or(s.SessionID, s.ID, strings.TrimSuffix(base, ".json"))
 			model := s.Model
 			if model == "" {
 				model = "gemini"
@@ -127,7 +128,7 @@ func (a Gemini) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			c.emit(schema.Event{
 				V: schema.Version, ID: schema.MakeID(schema.SourceGemini, nid), NativeID: nid,
 				Source: schema.SourceGemini, Surface: schema.SurfaceCLI,
-				TS:        pickTime(firstNonEmpty(s.LastTime, s.StartTime), 0),
+				TS:        pickTime(cmp.Or(s.LastTime, s.StartTime), 0),
 				MachineID: c.MachineID,
 				Provider:  "gemini", Model: model, Endpoint: "gemini",
 				Usage: usage, SessionID: nid, CostBasis: schema.CostRateCard,

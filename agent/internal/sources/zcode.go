@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 
@@ -46,7 +47,7 @@ func (a ZCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 		if l.Usage == nil || l.Usage.empty() {
 			return
 		}
-		nid := firstNonEmpty(l.RequestID, l.ID)
+		nid := cmp.Or(l.RequestID, l.ID)
 		if nid == "" {
 			return
 		}
