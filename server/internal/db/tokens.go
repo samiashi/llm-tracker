@@ -46,17 +46,40 @@ func (d *DB) TokenLogin(ctx context.Context, token string) (string, bool, error)
 	return login, true, nil
 }
 
-// RevokeTokens revokes every live token issued to login and says how many
-// there were. Enrolment checks membership once, so this is how someone who
-// leaves the org stops uploading.
-func (d *DB) RevokeTokens(ctx context.Context, login string) (int64, error) {
-	res, err := d.write.ExecContext(ctx,
-		`UPDATE agent_token SET revoked_at = ? WHERE login = ? AND revoked_at IS NULL`,
-		time.Now().Unix(), login)
+// Revoked is what revoking a login withdrew: its live ingest tokens, and the
+// machines and accounts it had claimed.
+type Revoked struct{ Tokens, Machines, Accounts int64 }
+
+// RevokeTokens revokes every live token issued to login and releases the
+// machines and accounts it claimed. Enrolment checks membership once, so this
+// is how someone who leaves the org stops uploading, and the release is how a
+// laptop that changes hands can upload for its next owner.
+func (d *DB) RevokeTokens(ctx context.Context, login string) (Revoked, error) {
+	var r Revoked
+	tx, err := d.begin(ctx)
 	if err != nil {
-		return 0, err
+		return r, err
 	}
-	return res.RowsAffected()
+	defer tx.Rollback()
+	for _, q := range []struct {
+		n    *int64
+		sql  string
+		args []any
+	}{
+		{&r.Tokens, `UPDATE agent_token SET revoked_at = ? WHERE login = ? AND revoked_at IS NULL`,
+			[]any{time.Now().Unix(), login}},
+		{&r.Machines, `UPDATE machine SET login = NULL WHERE login = ?`, []any{login}},
+		{&r.Accounts, `UPDATE account SET login = NULL WHERE login = ?`, []any{login}},
+	} {
+		res, err := tx.ExecContext(ctx, q.sql, q.args...)
+		if err != nil {
+			return r, err
+		}
+		if *q.n, err = res.RowsAffected(); err != nil {
+			return r, err
+		}
+	}
+	return r, tx.Commit()
 }
 
 // tokenHash is a plain SHA-256: a token is 256 random bits, so there is

@@ -20,7 +20,7 @@ func people(t *testing.T, d *DB) {
 		e.AccountRef, e.TS = ref, time.Now().AddDate(0, 0, -daysAgo)
 		return e
 	}
-	if _, err := d.Ingest(ctx, &schema.Batch{V: schema.Version, MachineID: "m",
+	if _, err := d.Ingest(ctx, testLogin, &schema.Batch{V: schema.Version, MachineID: "m",
 		Events: []schema.Event{
 			with("work", "anthropic:a", 100, 40), with("codex", "openai:b", 200, 10),
 			with("no-email", "anthropic:c", 400, 5), with("ghost", "ghost:x", 800, 3),
@@ -35,7 +35,7 @@ func people(t *testing.T, d *DB) {
 	// A batch with no accounts leaves its events with none to be credited to.
 	orphan := with("orphan", "", 1_600, 1)
 	orphan.MachineID = "m2"
-	if _, err := d.Ingest(ctx, &schema.Batch{V: schema.Version, MachineID: "m2",
+	if _, err := d.Ingest(ctx, testLogin, &schema.Batch{V: schema.Version, MachineID: "m2",
 		Events: []schema.Event{orphan}}); err != nil {
 		t.Fatal(err)
 	}

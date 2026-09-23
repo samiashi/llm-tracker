@@ -47,7 +47,7 @@ func TestOnlyAReleaseIsReportedAsOne(t *testing.T) {
 		t.Run(fmt.Sprintf("%q", version), func(t *testing.T) {
 			s := newServer(t)
 			s.Version = version
-			if _, err := s.DB.Ingest(context.Background(), &schema.Batch{
+			if _, err := s.DB.Ingest(context.Background(), "tester", &schema.Batch{
 				V: schema.Version, MachineID: "m", AgentVersion: version,
 			}); err != nil {
 				t.Fatal(err)

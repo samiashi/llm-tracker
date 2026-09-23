@@ -48,7 +48,7 @@ func ingestReq(body string) *http.Request {
 // anthropic:b for them to resolve to.
 func seed(t *testing.T, s *Server, events ...schema.Event) {
 	t.Helper()
-	if _, err := s.DB.Ingest(context.Background(), &schema.Batch{
+	if _, err := s.DB.Ingest(context.Background(), "tester", &schema.Batch{
 		V: schema.Version, MachineID: "m", Events: events,
 		Accounts: []schema.Account{
 			{Ref: "anthropic:a", Provider: "anthropic", Email: "dev@example.com"},

@@ -32,9 +32,12 @@ func ev(id string, tok int64, basis schema.CostBasis) schema.Event {
 	}
 }
 
+// testLogin is the GitHub login the tests' uploads are enrolled by.
+const testLogin = "dev"
+
 func ingest(t *testing.T, d *DB, events ...schema.Event) *IngestResult {
 	t.Helper()
-	res, err := d.Ingest(context.Background(), &schema.Batch{
+	res, err := d.Ingest(context.Background(), testLogin, &schema.Batch{
 		V: schema.Version, MachineID: "m", Events: events,
 		Accounts: []schema.Account{{Ref: "anthropic:a", Provider: "anthropic", Email: "dev@example.com"}},
 	})
@@ -174,7 +177,7 @@ func TestAccountsMergeIntoOnePerson(t *testing.T) {
 	b := ev("b", 20, schema.CostBilled)
 	b.AccountRef = "openai:b"
 
-	_, err := d.Ingest(ctx, &schema.Batch{V: schema.Version, MachineID: "m",
+	_, err := d.Ingest(ctx, testLogin, &schema.Batch{V: schema.Version, MachineID: "m",
 		Events: []schema.Event{a, b}, Accounts: []schema.Account{
 			{Ref: "anthropic:a", Provider: "anthropic", Email: "dev@example.com"},
 			{Ref: "openai:b", Provider: "openai", Email: "dev@example.com"},
@@ -206,7 +209,7 @@ func TestCompleteUnknownReportReplaces(t *testing.T) {
 				V: schema.Version, MachineID: "m", Path: "/p/" + h, Hint: h, SizeBytes: 1,
 			})
 		}
-		if _, err := d.Ingest(ctx, &schema.Batch{
+		if _, err := d.Ingest(ctx, testLogin, &schema.Batch{
 			V: schema.Version, MachineID: "m",
 			UnknownSource: rows, UnknownComplete: complete,
 		}); err != nil {
@@ -500,7 +503,7 @@ func TestAgentEventCountCoversEveryAccountOnTheMachine(t *testing.T) {
 	personal.ID, personal.AccountRef = "p1", "anthropic:b"
 	second := ev("w2", 10, schema.CostBilled)
 
-	if _, err := d.Ingest(ctx, &schema.Batch{
+	if _, err := d.Ingest(ctx, testLogin, &schema.Batch{
 		V: schema.Version, MachineID: "m",
 		Events: []schema.Event{work, personal, second},
 		Accounts: []schema.Account{
@@ -690,7 +693,7 @@ func TestAnEmptyHostnameNeverBlanksAMachine(t *testing.T) {
 	ctx := context.Background()
 	host := func(name string) string {
 		t.Helper()
-		if _, err := d.Ingest(ctx, &schema.Batch{
+		if _, err := d.Ingest(ctx, testLogin, &schema.Batch{
 			V: schema.Version, MachineID: "m", Hostname: name, AgentVersion: "v1.4.0",
 		}); err != nil {
 			t.Fatal(err)

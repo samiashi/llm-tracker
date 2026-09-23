@@ -179,7 +179,7 @@ func TestTheDaySummaryAlwaysMatchesItsEvents(t *testing.T) {
 				ingest(t, d, ev("fresh", 100, schema.CostBilled), ev("fresh", 400, schema.CostBilled))
 			})
 			step("an account and a basis filled in", func() {
-				if _, err := d.Ingest(context.Background(), &schema.Batch{V: schema.Version, MachineID: "m2",
+				if _, err := d.Ingest(context.Background(), testLogin, &schema.Batch{V: schema.Version, MachineID: "m2",
 					Events: []schema.Event{func() schema.Event {
 						e := ev("orphan", 50, schema.CostUnknown)
 						e.MachineID, e.AccountRef = "m2", ""

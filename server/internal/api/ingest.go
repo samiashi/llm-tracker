@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
+	"github.com/samiashi/llm-tracker/server/internal/db"
 )
 
 const (
@@ -34,19 +35,19 @@ const (
 	maxNativeCostUSD = 1_000_000.0
 )
 
-// authorised checks the caller's ingest token, one enrolment issued. Ingest is
+// authorised returns the GitHub login the caller's ingest token was enrolled
+// by, and false for a token enrolment never issued or has revoked. Ingest is
 // the one write path, and an open one lets anyone poison the numbers.
-func (s *Server) authorised(r *http.Request) (bool, error) {
+func (s *Server) authorised(r *http.Request) (string, bool, error) {
 	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || !strings.HasPrefix(got, schema.EnrolledTokenPrefix) {
-		return false, nil
+		return "", false, nil
 	}
-	_, live, err := s.DB.TokenLogin(r.Context(), got)
-	return live, err
+	return s.DB.TokenLogin(r.Context(), got)
 }
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
-	ok, err := s.authorised(r)
+	login, ok, err := s.authorised(r)
 	if err != nil {
 		// Not a 401, which an agent takes as its token refused -- something
 		// retrying never fixes -- for what is a fault on this side.
@@ -99,8 +100,24 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	batch, rejected := in.batch()
-	res, err := s.DB.Ingest(r.Context(), &batch)
-	if err != nil {
+	res, err := s.DB.Ingest(r.Context(), login, &batch)
+	var claimed *db.MachineClaimedError
+	switch {
+	case errors.As(err, &claimed):
+		// The agent keeps the batch and retries, so nothing is lost while an
+		// admin frees a laptop that changed hands. 409, not 403: the agent
+		// reads 401 and 403 as its token refused and says to re-enrol, which
+		// cannot help here.
+		s.Log.Warn("ingest refused: the machine is registered to another login",
+			"machine_id", claimed.Machine, "owner", claimed.Owner, "login", login)
+		writeErr(w, http.StatusConflict, fmt.Errorf("%w; an admin frees it by running "+
+			"the server with -revoke %s, which also stops that login's other machines "+
+			"uploading until they enrol again", claimed, claimed.Owner))
+		return
+	case errors.Is(err, db.ErrNoMachine):
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	case err != nil:
 		s.writeInternal(w, "ingest", err)
 		return
 	}

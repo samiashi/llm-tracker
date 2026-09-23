@@ -187,7 +187,7 @@ func TestAPruningServerStillRefusesBelowItsFloor(t *testing.T) {
 	}
 
 	d.Pruning = true
-	res, err := d.Ingest(ctx, &schema.Batch{
+	res, err := d.Ingest(ctx, testLogin, &schema.Batch{
 		V: schema.Version, MachineID: "m", Events: []schema.Event{old},
 	})
 	if err != nil {
@@ -204,7 +204,7 @@ func TestAPruningServerStillRefusesBelowItsFloor(t *testing.T) {
 	// With pruning off nothing is refused (the rolled-up event is a no-op),
 	// and the ack says so, so the agent offers what it held back.
 	d.Pruning = false
-	res, err = d.Ingest(ctx, &schema.Batch{
+	res, err = d.Ingest(ctx, testLogin, &schema.Batch{
 		V: schema.Version, MachineID: "m", Events: []schema.Event{old},
 	})
 	if err != nil {

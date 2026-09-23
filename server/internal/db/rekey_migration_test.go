@@ -21,6 +21,35 @@ func keyed(src schema.Source, machine, nid, session string, ts time.Time, in int
 	}
 }
 
+// ingestFrom uploads events as machine does: every row is stored under the
+// machine its batch names.
+func ingestFrom(t *testing.T, d *DB, machine string, events ...schema.Event) {
+	t.Helper()
+	if _, err := d.Ingest(context.Background(), testLogin, &schema.Batch{
+		V: schema.Version, MachineID: machine, Events: events,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// storeRaw writes events as a server on an older schema stored them, which
+// ingest, following the current one, cannot.
+func storeRaw(t *testing.T, d *DB, events ...schema.Event) {
+	t.Helper()
+	for _, e := range events {
+		if _, err := d.write.ExecContext(context.Background(), `
+			INSERT INTO event (id, native_id, source, ts, day, machine_id, account_ref, model,
+			                   session_id, input_tokens, output_tokens, total_tokens,
+			                   cost_basis, collector, received_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+			e.ID, e.NativeID, string(e.Source), e.TS.Unix(), e.TS.UTC().Format(time.DateOnly),
+			e.MachineID, e.AccountRef, e.Model, e.SessionID, e.Usage.InputTokens,
+			e.Usage.OutputTokens, e.Usage.TotalTokens(), string(e.CostBasis), e.Collector); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func nativeIDs(t *testing.T, d *DB, src schema.Source, machine string) []string {
 	t.Helper()
 	rows, err := d.write.QueryContext(context.Background(),
@@ -81,14 +110,14 @@ func baseKey(machine string) string {
 func TestCodexOrdinalKeysRetireWhenTheirMachineReportsTheNewKey(t *testing.T) {
 	d := newDB(t)
 	for _, m := range []string{"m1", "m2"} {
-		ingest(t, d,
+		ingestFrom(t, d, m,
 			keyed(schema.SourceCodex, m, absKey(m), "", rekeyAt, 100),
 			keyed(schema.SourceCodex, m, baseKey(m), "", rekeyAt, 100),
 			keyed(schema.SourceCodex, m, "resp_0a1b"+m, "s", rekeyAt, 50),
 		)
 	}
 
-	ingest(t, d, keyed(schema.SourceCodex, "m1", "tc:5f0c", "s", rekeyAt, 100))
+	ingestFrom(t, d, "m1", keyed(schema.SourceCodex, "m1", "tc:5f0c", "s", rekeyAt, 100))
 	if got, want := nativeIDs(t, d, schema.SourceCodex, "m1"), []string{"resp_0a1bm1", "tc:5f0c"}; !slices.Equal(got, want) {
 		t.Fatalf("m1 holds %v, want %v", got, want)
 	}
@@ -97,7 +126,7 @@ func TestCodexOrdinalKeysRetireWhenTheirMachineReportsTheNewKey(t *testing.T) {
 	}
 
 	// A straggler under the old key from a machine that has moved on.
-	ingest(t, d, keyed(schema.SourceCodex, "m1", "rollout-x.jsonl#9", "", rekeyAt, 70))
+	ingestFrom(t, d, "m1", keyed(schema.SourceCodex, "m1", "rollout-x.jsonl#9", "", rekeyAt, 70))
 	if got := nativeIDs(t, d, schema.SourceCodex, "m1"); slices.Contains(got, "rollout-x.jsonl#9") {
 		t.Fatalf("m1 holds %v; an old-key row after the new key would be counted twice", got)
 	}
@@ -109,7 +138,7 @@ func TestCodexOrdinalKeysRetireWhenTheirMachineReportsTheNewKey(t *testing.T) {
 func TestCodexRowsStoredBeforeTheMigrationAreRetired(t *testing.T) {
 	d := newDB(t)
 	withoutRekeyMigration(t, d, func() {
-		ingest(t, d,
+		storeRaw(t, d,
 			keyed(schema.SourceCodex, "m1", absKey("m1"), "", rekeyAt, 100),
 			keyed(schema.SourceCodex, "m1", "tc:5f0c", "s", rekeyAt, 100),
 			keyed(schema.SourceCodex, "m2", absKey("m2"), "", rekeyAt, 100),
@@ -158,7 +187,7 @@ func TestClineOldKeysRetireOnlyWhereTheirReplacementIsPresent(t *testing.T) {
 	})
 	t.Run("both stored before the migration", func(t *testing.T) {
 		d := newDB(t)
-		withoutRekeyMigration(t, d, func() { ingest(t, d, append(old, current)...) })
+		withoutRekeyMigration(t, d, func() { storeRaw(t, d, append(old, current)...) })
 		if got := nativeIDs(t, d, schema.SourceCline, "m"); !slices.Equal(got, want) {
 			t.Fatalf("holds %v, want %v", got, want)
 		}
@@ -199,7 +228,7 @@ func TestContinueOldKeysRetireOnlyWhereTheirReplacementIsPresent(t *testing.T) {
 	})
 	t.Run("both stored before the migration", func(t *testing.T) {
 		d := newDB(t)
-		withoutRekeyMigration(t, d, func() { ingest(t, d, append(old, current...)...) })
+		withoutRekeyMigration(t, d, func() { storeRaw(t, d, append(old, current...)...) })
 		if got := nativeIDs(t, d, schema.SourceContinue, "m"); !slices.Equal(got, want) {
 			t.Fatalf("holds %v, want %v", got, want)
 		}
@@ -212,7 +241,7 @@ func TestCodexOrdinalKeysBelowTheLegacyFloorAreKept(t *testing.T) {
 	before, after := rekeyAt.AddDate(0, 0, -1), rekeyAt.AddDate(0, 0, 1)
 	d := newDB(t)
 	withoutRekeyMigration(t, d, func() {
-		ingest(t, d,
+		storeRaw(t, d,
 			keyed(schema.SourceCodex, "m1", "rollout-m1.jsonl#1", "", before, 100),
 			keyed(schema.SourceCodex, "m1", "rollout-m1.jsonl#2", "", after, 100),
 			keyed(schema.SourceCodex, "m1", "tc:5f0c", "s", after, 100),
@@ -235,7 +264,7 @@ func TestCodexOrdinalKeysBelowTheLegacyFloorAreKept(t *testing.T) {
 		t.Errorf("m1 holds %v, want %v", got, want)
 	}
 
-	ingest(t, d, keyed(schema.SourceCodex, "m2", "tc:9d2e", "s", after, 100))
+	ingestFrom(t, d, "m2", keyed(schema.SourceCodex, "m2", "tc:9d2e", "s", after, 100))
 	if got, want := nativeIDs(t, d, schema.SourceCodex, "m2"), []string{"rollout-m2.jsonl#1", "tc:9d2e"}; !slices.Equal(got, want) {
 		t.Errorf("m2 holds %v, want %v", got, want)
 	}

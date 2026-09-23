@@ -2,6 +2,9 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/samiashi/llm-tracker/schema"
@@ -99,7 +102,11 @@ const upsertEvent = `
 		                   THEN event.cost_source ELSE excluded.cost_source END,
 
 		received_at = excluded.received_at
-	WHERE ` + longerReading + ` OR ` + newerReading + `
+	-- Only the machine that stored a row can move it. An id derives from the
+	-- harness's own record key, which a colleague can often reconstruct, so a
+	-- reading merged in from another machine would let any enrolled token
+	-- rewrite someone else's usage.
+	WHERE event.machine_id = excluded.machine_id AND (` + longerReading + ` OR ` + newerReading + `
 	   OR excluded.reasoning_tokens > event.reasoning_tokens
 	   OR excluded.web_search_calls > event.web_search_calls
 	   OR excluded.web_fetch_calls  > event.web_fetch_calls
@@ -109,38 +116,108 @@ const upsertEvent = `
 	   OR (excluded.inference_geo != '' AND event.inference_geo = '')
 	   OR (excluded.agent_version != '' AND event.agent_version = '')
 	   OR (excluded.account_ref   != '' AND event.account_ref   = '')
-	   OR (excluded.cost_basis IN ` + knownBasis + ` AND event.cost_basis NOT IN ` + knownBasis + `)`
+	   OR (excluded.cost_basis IN ` + knownBasis + ` AND event.cost_basis NOT IN ` + knownBasis + `))`
 
-// Ingest stores one agent batch.
-func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error) {
+// ErrNoMachine is a batch carrying events or unknown sources but no machine to
+// store them under.
+var ErrNoMachine = errors.New("a batch with events or unknown sources must name its machine")
+
+// MachineClaimedError refuses a batch for a machine another login uploads from.
+type MachineClaimedError struct{ Machine, Owner string }
+
+func (e *MachineClaimedError) Error() string {
+	return fmt.Sprintf("machine %s is registered to %s", e.Machine, e.Owner)
+}
+
+// Ingest stores one agent batch for login, the GitHub login its ingest token
+// was enrolled by.
+//
+// The login is the one thing about a batch the server did not take on the
+// agent's word, so whose each row is follows from it: a machine is claimed by
+// the first login to upload from it and refused to any other, every row is
+// stored under the batch's machine, and an account is claimed by the first
+// login to report it. Otherwise any colleague's token could book usage to
+// another person, re-point their email, or fire a re-key trigger (00016) that
+// deletes their machine's rows.
+func (d *DB) Ingest(ctx context.Context, login string, b *schema.Batch) (*IngestResult, error) {
+	if b.MachineID == "" && (len(b.Events) > 0 || len(b.UnknownSource) > 0) {
+		return nil, ErrNoMachine
+	}
 	now := time.Now().Unix()
-	res := &IngestResult{EventsReceived: len(b.Events)}
 
-	tx, err := d.write.BeginTx(ctx, nil)
+	tx, err := d.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	if b.MachineID != "" {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO machine (id, hostname, agent_version, first_seen, last_seen)
-			VALUES (?, ?, ?, ?, ?)
-			-- An agent that could not read its hostname sends none; that must
-			-- not blank the name the agents table shows.
-			ON CONFLICT(id) DO UPDATE SET
-			  hostname = CASE WHEN excluded.hostname != '' THEN excluded.hostname
-			                  ELSE machine.hostname END,
-			  agent_version = excluded.agent_version, last_seen = excluded.last_seen`,
-			b.MachineID, b.Hostname, b.AgentVersion, now, now); err != nil {
-			return nil, err
-		}
+	if err := claimMachineTx(ctx, tx, login, b, now); err != nil {
+		return nil, err
 	}
+	accounts, err := claimAccountsTx(ctx, tx, login, b.Accounts, now)
+	if err != nil {
+		return nil, err
+	}
+	res, err := d.storeEventsTx(ctx, tx, login, b, accounts, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := storeUnknownTx(ctx, tx, b, now); err != nil {
+		return nil, err
+	}
+	return res, tx.Commit()
+}
 
-	for _, a := range b.Accounts {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO account (ref, provider, email, plan_type, first_seen, last_seen)
-			VALUES (?, ?, ?, ?, ?, ?)
+// claimMachineTx records the batch's machine for login, claiming it if no
+// login has, and refuses the batch if another login has.
+func claimMachineTx(ctx context.Context, tx *sql.Tx, login string, b *schema.Batch, now int64) error {
+	if b.MachineID == "" {
+		return nil
+	}
+	r, err := tx.ExecContext(ctx, `
+		INSERT INTO machine (id, hostname, agent_version, first_seen, last_seen, login)
+		VALUES (?, ?, ?, ?, ?, ?)
+		-- An agent that could not read its hostname sends none; that must
+		-- not blank the name the agents table shows.
+		ON CONFLICT(id) DO UPDATE SET
+		  hostname = CASE WHEN excluded.hostname != '' THEN excluded.hostname
+		                  ELSE machine.hostname END,
+		  agent_version = excluded.agent_version, last_seen = excluded.last_seen,
+		  login = excluded.login
+		WHERE machine.login IS NULL OR machine.login = excluded.login`,
+		b.MachineID, b.Hostname, b.AgentVersion, now, now, login)
+	if err != nil {
+		return err
+	}
+	if n, _ := r.RowsAffected(); n > 0 {
+		return nil
+	}
+	claimed := &MachineClaimedError{Machine: b.MachineID}
+	if err := tx.QueryRowContext(ctx,
+		`SELECT login FROM machine WHERE id = ?`, b.MachineID).Scan(&claimed.Owner); err != nil {
+		return err
+	}
+	return claimed
+}
+
+// claimAccountsTx records the batch's accounts for login and returns the refs
+// among them that login holds. An account is claimed by the first login to
+// report it, and an entry for one another login holds changes nothing.
+func claimAccountsTx(ctx context.Context, tx *sql.Tx, login string, accounts []schema.Account, now int64) ([]string, error) {
+	var held []string
+	for _, a := range accounts {
+		if a.Ref == "" {
+			continue
+		}
+		r, err := tx.ExecContext(ctx, `
+			INSERT INTO account (ref, provider, email, plan_type, first_seen, last_seen, login)
+			-- An email another login's account carries is not taken: the
+			-- dashboard's person is the email, so it would move usage onto
+			-- that colleague.
+			VALUES (?1, ?2, CASE WHEN EXISTS (SELECT 1 FROM account
+			                                   WHERE lower(email) = lower(?3) AND login != ?5)
+			                     THEN '' ELSE ?3 END,
+			        ?4, ?6, ?6, ?5)
 			-- Never blanked. The agent sends a bare ref whenever it cannot
 			-- decode the login -- an expired token, an API key -- and a blanked
 			-- email splits one colleague's history into two people.
@@ -151,11 +228,34 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 			                   ELSE account.email END,
 			  plan_type = CASE WHEN excluded.plan_type != '' THEN excluded.plan_type
 			                   ELSE account.plan_type END,
-			  last_seen = excluded.last_seen`,
-			a.Ref, a.Provider, a.Email, a.PlanType, now, now); err != nil {
+			  last_seen = excluded.last_seen,
+			  login     = excluded.login
+			WHERE account.login IS NULL OR account.login = excluded.login`,
+			a.Ref, a.Provider, a.Email, a.PlanType, login, now)
+		if err != nil {
 			return nil, err
 		}
+		if n, _ := r.RowsAffected(); n > 0 {
+			held = append(held, a.Ref)
+		}
 	}
+	return held, nil
+}
+
+// storeEventsTx stores the batch's events under its machine, and prices each
+// row a reading was merged into.
+func (d *DB) storeEventsTx(ctx context.Context, tx *sql.Tx, login string, b *schema.Batch,
+	accounts []string, now int64) (*IngestResult, error) {
+	res := &IngestResult{EventsReceived: len(b.Events)}
+	floor, err := d.ingestFloorTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	// Reported on every ingest, and enforced exactly when a floor is: an
+	// agent re-offers what it was refused only when told nothing is refused,
+	// so any mismatch re-sends the refused backlog on every push.
+	res.RetentionFloor = floor
+	res.RetentionEnforced = floor != ""
 
 	upsert, err := tx.PrepareContext(ctx, upsertEvent)
 	if err != nil {
@@ -167,19 +267,10 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 	// knows no account -- opencode authenticates per provider -- is credited
 	// to the machine's first one, or its spend belongs to nobody.
 	var machineAccount string
-	if len(b.Accounts) > 0 {
-		machineAccount = b.Accounts[0].Ref
+	if len(accounts) > 0 {
+		machineAccount = accounts[0]
 	}
-
-	floor, err := d.ingestFloorTx(ctx, tx)
-	if err != nil {
-		return nil, err
-	}
-	// Reported on every ingest, and enforced exactly when a floor is: an
-	// agent re-offers what it was refused only when told nothing is refused,
-	// so any mismatch re-sends the refused backlog on every push.
-	res.RetentionFloor = floor
-	res.RetentionEnforced = floor != ""
+	credit := accountCredit(ctx, tx, login, machineAccount)
 
 	// merged collects the rows a reading was merged into; see priceMerged.
 	// An upsert that updates leaves last_insert_rowid where it was, so a new
@@ -200,8 +291,9 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 			res.EventsSkipped++
 			continue
 		}
-		if e.AccountRef == "" {
-			e.AccountRef = machineAccount
+		ref, err := credit(e.AccountRef)
+		if err != nil {
+			return nil, err
 		}
 		cost, source := d.priceEvent(e)
 		if source == "unpriced" {
@@ -210,7 +302,7 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 		u := e.Usage
 		r, err := upsert.ExecContext(ctx,
 			e.ID, e.NativeID, string(e.Source), string(e.Surface), ts.Unix(), day,
-			e.MachineID, e.AccountRef, e.Provider, e.Model, e.Endpoint,
+			b.MachineID, ref, e.Provider, e.Model, e.Endpoint,
 			u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWrite5mTokens,
 			u.CacheWrite1hTokens, u.ReasoningTokens, u.WebSearchCalls, u.WebFetchCalls,
 			u.TotalTokens(), string(e.CostBasis), cost, source,
@@ -222,9 +314,10 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 		rowid, _ := r.LastInsertId()
 		inserted := lastRowid >= 0 && rowid != lastRowid
 		lastRowid = rowid
-		// Nothing changed: an equal or poorer reading, or one already counted
-		// inside a rollup whatever machine, account or day it arrives with now.
-		// Either is a successful duplicate, neither stored nor refused.
+		// Nothing changed: an equal or poorer reading, one from another
+		// machine, or one already counted inside a rollup whatever machine,
+		// account or day it arrives with now. Each is a successful duplicate,
+		// neither stored nor refused.
 		if n, _ := r.RowsAffected(); n > 0 {
 			res.EventsStored++
 			if !inserted {
@@ -232,16 +325,42 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 			}
 		}
 	}
-	if err := d.priceMerged(ctx, tx, merged); err != nil {
-		return nil, err
-	}
+	return res, d.priceMerged(ctx, tx, merged)
+}
 
+// accountCredit returns the account an event is credited to: its own, unless
+// another login has claimed that one, and otherwise the machine's.
+func accountCredit(ctx context.Context, tx *sql.Tx, login, machine string) func(ref string) (string, error) {
+	usable := map[string]bool{"": false}
+	return func(ref string) (string, error) {
+		ok, seen := usable[ref]
+		if !seen {
+			err := tx.QueryRowContext(ctx,
+				`SELECT login IS NULL OR login = ? FROM account WHERE ref = ?`, login, ref).Scan(&ok)
+			if errors.Is(err, sql.ErrNoRows) {
+				ok, err = true, nil
+			}
+			if err != nil {
+				return "", err
+			}
+			usable[ref] = ok
+		}
+		if !ok {
+			return machine, nil
+		}
+		return ref, nil
+	}
+}
+
+// storeUnknownTx records the harnesses the batch's machine found that no
+// adapter reads.
+func storeUnknownTx(ctx context.Context, tx *sql.Tx, b *schema.Batch, now int64) error {
 	if b.UnknownComplete && b.MachineID != "" {
 		// Replace rather than merge: a harness that gained an adapter must
 		// stop being reported as a gap.
 		if _, err := tx.ExecContext(ctx,
 			`DELETE FROM unknown_source WHERE machine_id = ?`, b.MachineID); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	for _, us := range b.UnknownSource {
@@ -251,11 +370,10 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 			ON CONFLICT(machine_id, path) DO UPDATE SET size_bytes=excluded.size_bytes,
 			  hint=excluded.hint, status=excluded.status, note=excluded.note,
 			  last_seen=excluded.last_seen`,
-			us.MachineID, us.Path, us.Hint, us.SizeBytes, now, now,
+			b.MachineID, us.Path, us.Hint, us.SizeBytes, now, now,
 			string(us.Status), us.Note); err != nil {
-			return nil, err
+			return err
 		}
 	}
-
-	return res, tx.Commit()
+	return nil
 }

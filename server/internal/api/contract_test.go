@@ -65,7 +65,7 @@ func TestDashboardContract(t *testing.T) {
 	e := event("contract-1", "claude-opus-5", "anthropic:a", 1_000)
 	e.TS = time.Date(2026, 6, 15, 14, 0, 0, 0, time.UTC)
 	e.Effort, e.SessionID = "high", "session-1"
-	if _, err := s.DB.Ingest(context.Background(), &schema.Batch{
+	if _, err := s.DB.Ingest(context.Background(), "tester", &schema.Batch{
 		V: schema.Version, MachineID: "m", Hostname: "host", AgentVersion: "v1.4.0",
 		Events:   []schema.Event{e},
 		Accounts: []schema.Account{{Ref: "anthropic:a", Provider: "anthropic", Email: "dev@example.com"}},

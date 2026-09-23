@@ -70,16 +70,17 @@ func run() int {
 	}
 
 	if *revoke != "" {
-		n, err := database.RevokeTokens(context.Background(), *revoke)
+		r, err := database.RevokeTokens(context.Background(), *revoke)
 		if err != nil {
 			log.Error("revoke", "err", err)
 			return 1
 		}
-		if n == 0 {
-			log.Warn("no live tokens to revoke", "login", *revoke, "note", "logins are GitHub usernames")
+		if r == (db.Revoked{}) {
+			log.Warn("nothing to revoke", "login", *revoke, "note", "logins are GitHub usernames")
 			return 0
 		}
-		log.Info("revoked", "login", *revoke, "tokens", n)
+		log.Info("revoked", "login", *revoke, "tokens", r.Tokens,
+			"machines_released", r.Machines, "accounts_released", r.Accounts)
 		return 0
 	}
 

@@ -33,9 +33,9 @@ func TestAnIssuedTokenAuthenticatesUntilItsLoginIsRevoked(t *testing.T) {
 	}
 
 	// A login differing only in case is the same GitHub account.
-	n, err := d.RevokeTokens(ctx, "Alice")
-	if err != nil || n != 2 {
-		t.Fatalf("RevokeTokens = %d, %v; want both of alice's tokens", n, err)
+	r, err := d.RevokeTokens(ctx, "Alice")
+	if err != nil || r.Tokens != 2 {
+		t.Fatalf("RevokeTokens = %+v, %v; want both of alice's tokens", r, err)
 	}
 	for _, tok := range []string{laptop, desktop} {
 		if _, ok, err := d.TokenLogin(ctx, tok); err != nil || ok {
@@ -45,8 +45,8 @@ func TestAnIssuedTokenAuthenticatesUntilItsLoginIsRevoked(t *testing.T) {
 	if _, ok, _ := d.TokenLogin(ctx, other); !ok {
 		t.Fatal("revoking alice revoked bob's token too")
 	}
-	if n, _ := d.RevokeTokens(ctx, "alice"); n != 0 {
-		t.Fatalf("revoking again counted %d tokens; only live ones count", n)
+	if r, _ := d.RevokeTokens(ctx, "alice"); r.Tokens != 0 {
+		t.Fatalf("revoking again counted %d tokens; only live ones count", r.Tokens)
 	}
 }
 

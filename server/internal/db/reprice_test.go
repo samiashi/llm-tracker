@@ -52,7 +52,7 @@ func TestRepriceNeverOverwritesAConcurrentIngest(t *testing.T) {
 					}
 					batch = append(batch, e)
 				}
-				if _, err := d.Ingest(ctx, &schema.Batch{
+				if _, err := d.Ingest(ctx, testLogin, &schema.Batch{
 					V: schema.Version, MachineID: "m", Events: batch,
 				}); err != nil {
 					t.Error(err)

@@ -41,7 +41,8 @@ wrong numbers, and the comment above the code says which.
    because the payload is what gets shipped and a row whose two halves
    disagree is worse than either. On the server the token split is always one
    reading's, and a merged row's table price is recomputed from the stored row
-   (`priceMerged`), never taken from the reading merged into it.
+   (`priceMerged`), never taken from the reading merged into it. Only the
+   machine that stored a row can move it (see Security).
 2. **Events and their file cursor commit in one transaction**
    (`store.CommitFile`), with any parser state staged through `c.StageMeta`.
    Advancing a cursor before its rows are durable loses them permanently —
@@ -378,7 +379,14 @@ fixed order and never cycled, and no chart uses two y-axes.
   GitHub session from a member of the org, the page and its scripts included.
 - Ingest takes only tokens enrolment issued. `POST /v1/enroll` trades a GitHub
   token for one, after the org check the dashboard makes; the server keeps only
-  a SHA-256 of it, and `-revoke <login>` withdraws a login's tokens.
+  a SHA-256 of it.
+- A token's login is who uploads; nothing else in a batch says whose a row is.
+  A machine and an account belong to the first login that uploads them, a
+  batch for another login's machine gets 409 and changes nothing, and another
+  login's email is never written to this one's accounts. Every row is stored
+  under the batch's machine, and only that machine can move a row it stored.
+  `-revoke <login>` withdraws a login's tokens and releases its machines and
+  accounts, so a laptop that changes hands can be claimed.
 - Ingest bounds every list in a batch, clips every string, and rejects an
   event whose counters, timestamp or native cost are implausible. A list added
   to `schema.Batch` must be shadowed in `ingestBody`; a test fails until it is.
