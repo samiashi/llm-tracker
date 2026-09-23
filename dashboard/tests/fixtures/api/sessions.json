@@ -11,7 +11,8 @@
       "session_id": "session-1",
       "source": "claude_code",
       "tokens": 1000,
-      "unknown_basis_usd": 0
+      "unknown_basis_usd": 0,
+      "unpriced_tokens": 0
     }
   ]
 }

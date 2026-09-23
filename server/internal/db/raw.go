@@ -138,6 +138,7 @@ type SessionRow struct {
 	BilledUSD       float64 `json:"billed_usd"`
 	RateCardUSD     float64 `json:"rate_card_usd"`
 	UnknownBasisUSD float64 `json:"unknown_basis_usd"`
+	UnpricedTokens  int64   `json:"unpriced_tokens"`
 	Events          int64   `json:"events"`
 	LastSeen        int64   `json:"last_seen"`
 }
@@ -162,6 +163,7 @@ func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow
 		         ` + billedUSD + ` AS billed,
 		         ` + rateCardUSD + ` AS ratecard,
 		         ` + unknownBasisUSD + ` AS unknown_basis,
+		         ` + unpricedUsage + ` AS unpriced,
 		         COUNT(*) AS events, MAX(ts) AS last_seen,
 		         MAX(account_ref) AS account_ref
 		  FROM event WHERE ` + where + ` AND session_id != ''
@@ -170,10 +172,25 @@ func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow
 		agg AS (
 		  SELECT session_id, source,
 		         SUM(tokens) AS tokens, SUM(billed) AS billed, SUM(ratecard) AS ratecard,
-		         SUM(unknown_basis) AS unknown_basis,
+		         SUM(unknown_basis) AS unknown_basis, SUM(unpriced) AS unpriced,
 		         SUM(events) AS events, MAX(last_seen) AS last_seen,
 		         MAX(account_ref) AS account_ref
 		  FROM scoped GROUP BY session_id, source
+		),
+		-- By whichever figure describes the session, never by their sum: seat
+		-- usage has no marginal cost. And not one column then the next, which
+		-- ranks every metered session above every seat one whatever the cost.
+		--
+		-- A session with unpriced tokens has no cost to rank by, and ranked
+		-- by its $0 it would never show (invariant 8). It is placed by its
+		-- unpriced tokens against every session's tokens, if that is higher.
+		ranked AS (
+		  SELECT *,
+		         ROW_NUMBER() OVER (ORDER BY MAX(billed, ratecard, unknown_basis) DESC,
+		                                     tokens DESC, session_id, source) AS by_cost,
+		         ROW_NUMBER() OVER (ORDER BY CASE WHEN unpriced > 0 THEN unpriced ELSE tokens END DESC,
+		                                     session_id, source) AS by_volume
+		  FROM agg
 		),
 		-- A tie goes to the one used last, then by name or scale, so a
 		-- session's model and effort cannot swap between two polls.
@@ -191,16 +208,14 @@ func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow
 		)
 		SELECT a.session_id, a.source,
 		       COALESCE(m.model,''), COALESCE(f.effort,''), COALESCE(acc.email,''),
-		       a.tokens, a.billed, a.ratecard, a.unknown_basis, a.events, a.last_seen
-		FROM agg a
+		       a.tokens, a.billed, a.ratecard, a.unknown_basis, a.unpriced,
+		       a.events, a.last_seen
+		FROM ranked a
 		LEFT JOIN top_model  m ON m.session_id = a.session_id AND m.rn = 1
 		LEFT JOIN top_effort f ON f.session_id = a.session_id AND f.rn = 1
 		LEFT JOIN account  acc ON acc.ref = a.account_ref
-		-- By whichever figure describes the session, never by their sum: seat
-		-- usage has no marginal cost. And not one column then the next, which
-		-- ranks every metered session above every seat one whatever the cost.
-		ORDER BY MAX(a.billed, a.ratecard, a.unknown_basis) DESC, a.tokens DESC,
-		         a.session_id, a.source
+		ORDER BY CASE WHEN a.unpriced > 0 THEN MIN(a.by_cost, a.by_volume) ELSE a.by_cost END,
+		         a.by_cost
 		LIMIT ?`
 
 	rows, err := d.read.QueryContext(ctx, q, append(args, sessionsList.of(limit))...)
@@ -213,7 +228,7 @@ func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow
 	for rows.Next() {
 		var s SessionRow
 		if err := rows.Scan(&s.SessionID, &s.Source, &s.Model, &s.Effort, &s.Email,
-			&s.Tokens, &s.BilledUSD, &s.RateCardUSD, &s.UnknownBasisUSD,
+			&s.Tokens, &s.BilledUSD, &s.RateCardUSD, &s.UnknownBasisUSD, &s.UnpricedTokens,
 			&s.Events, &s.LastSeen); err != nil {
 			return nil, err
 		}

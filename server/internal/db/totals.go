@@ -49,7 +49,7 @@ const totalsSelect = `
   ` + rateCardUSD + `,
   ` + unknownBasisUSD + `,
   COALESCE(SUM(CASE WHEN cost_basis NOT IN ` + knownBasis + ` AND cost_source!='unpriced' THEN total_tokens ELSE 0 END),0),
-  COALESCE(SUM(CASE WHEN cost_source='unpriced' THEN total_tokens ELSE 0 END),0),
+  ` + unpricedUsage + `,
   COALESCE(SUM(CASE WHEN cost_source='unpriced' THEN events ELSE 0 END),0)`
 
 // knownBasis is the cost bases with a money figure of their own. Every other
@@ -64,6 +64,10 @@ const (
 	rateCardUSD     = `COALESCE(SUM(CASE WHEN cost_basis='rate_card_equivalent' THEN cost_usd ELSE 0 END),0)`
 	unknownBasisUSD = `COALESCE(SUM(CASE WHEN cost_basis NOT IN ` + knownBasis + ` THEN cost_usd ELSE 0 END),0)`
 )
+
+// unpricedUsage is the usage no rate matched, reported beside every cost so a
+// $0 cannot pass for free usage (invariant 8).
+const unpricedUsage = `COALESCE(SUM(CASE WHEN cost_source='unpriced' THEN total_tokens ELSE 0 END),0)`
 
 // totalsDest returns scan destinations in totalsSelect's column order, so the
 // order is written once. The three spend fields are all float64: a swap in a

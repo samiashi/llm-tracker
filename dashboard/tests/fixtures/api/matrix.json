@@ -6,7 +6,8 @@
       "rate_card_usd": 0.005,
       "row": "claude-opus-5",
       "tokens": 1000,
-      "unknown_basis_usd": 0
+      "unknown_basis_usd": 0,
+      "unpriced_tokens": 0
     }
   ],
   "col_order": [

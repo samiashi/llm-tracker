@@ -182,7 +182,7 @@ func (d *DB) Export(ctx context.Context, w Window) ([]ExportRow, error) {
 		       e.effort, `+origin("e.")+`,
 		       SUM(e.total_tokens), SUM(e.input_tokens), SUM(e.output_tokens),
 		       SUM(e.cache_read_tokens), SUM(e.cost_usd), e.cost_basis, SUM(e.events),
-		       SUM(CASE WHEN e.cost_source = 'unpriced' THEN e.total_tokens ELSE 0 END)
+		       `+unpricedUsage+`
 		FROM event_daily e LEFT JOIN account a ON a.ref = e.account_ref
 		WHERE `+where+`
 		GROUP BY 1,2,3,4,5,6,12 ORDER BY 1 DESC, 7 DESC, 2,3,4,5,6,12`, args...)
@@ -212,6 +212,7 @@ type MatrixCell struct {
 	BilledUSD       float64 `json:"billed_usd"`
 	RateCardUSD     float64 `json:"rate_card_usd"`
 	UnknownBasisUSD float64 `json:"unknown_basis_usd"`
+	UnpricedTokens  int64   `json:"unpriced_tokens"`
 }
 
 // ErrUnknownDimension marks a caller's mistake rather than a server fault, so
@@ -269,7 +270,8 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 		       SUM(total_tokens),
 		       `+billedUSD+`,
 		       `+rateCardUSD+`,
-		       `+unknownBasisUSD+`
+		       `+unknownBasisUSD+`,
+		       `+unpricedUsage+`
 		FROM event_daily
 		WHERE %[3]s AND %[4]s
 		GROUP BY 1, 2 ORDER BY %[5]s`, rowCol, colCol, where, rowFilter, order)
@@ -284,7 +286,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 	for rowsRes.Next() {
 		var c MatrixCell
 		if err := rowsRes.Scan(&c.Row, &c.Col, &c.Tokens,
-			&c.BilledUSD, &c.RateCardUSD, &c.UnknownBasisUSD); err != nil {
+			&c.BilledUSD, &c.RateCardUSD, &c.UnknownBasisUSD, &c.UnpricedTokens); err != nil {
 			return nil, err
 		}
 		res.Cells = append(res.Cells, c)
