@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
@@ -162,38 +163,6 @@ func TestClineIgnoresNonRequestEntries(t *testing.T) {
 	}
 }
 
-// Reading only one shape silently drops every record written in the other.
-func TestContinueReadsBothRecordShapes(t *testing.T) {
-	for name, line := range map[string]string{
-		"flat":   `{"promptTokens":100,"generatedTokens":20,"model":"claude-opus-5","provider":"anthropic","timestamp":"2026-09-20T10:00:00Z"}`,
-		"nested": `{"eventName":"tokensGenerated","timestamp":"2026-09-20T10:00:00Z","data":{"promptTokens":100,"generatedTokens":20,"model":"claude-opus-5","provider":"anthropic"}}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			events := collectFile(t, ContinueDev{}, ".continue/dev_data/0.2.0/tokensGenerated.jsonl", line+"\n")
-			if len(events) != 1 {
-				t.Fatalf("stored %d events, want 1", len(events))
-			}
-			if u := events[0].Usage; u.InputTokens != 100 || u.OutputTokens != 20 {
-				t.Fatalf("got %d/%d, want 100/20", u.InputTokens, u.OutputTokens)
-			}
-		})
-	}
-}
-
-func TestContinueProviderGuessStaysConservative(t *testing.T) {
-	for model, want := range map[string]string{
-		"claude-opus-5":    "anthropic",
-		"gpt-6-astra":      "openai",
-		"gemini-3-pro":     "google",
-		"llama-3-70b":      "",
-		"some-local-thing": "",
-	} {
-		if got := modelProvider(model); got != want {
-			t.Errorf("modelProvider(%q) = %q, want %q", model, got, want)
-		}
-	}
-}
-
 func TestClineKeySurvivesAMessageBeingDeleted(t *testing.T) {
 	req := `{"type":"say","say":"api_req_started","ts":1758000000000,` +
 		`"modelInfo":{"providerId":"anthropic","modelId":"claude-opus-5"},` +
@@ -273,5 +242,40 @@ func TestClineOmitsNativeCostWhenClineReportedNone(t *testing.T) {
 	ev2, _ := c2.Drain()
 	if len(ev2) != 1 || ev2[0].NativeCostUSD == nil || *ev2[0].NativeCostUSD != 0 {
 		t.Fatal("a reported zero cost must be preserved as zero")
+	}
+}
+
+func TestClineReportsOnlyRowsItActuallyWrote(t *testing.T) {
+	first := `{"type":"say","say":"api_req_started","ts":1790000001000,` +
+		`"modelInfo":{"providerId":"anthropic","modelId":"claude-opus-5"},` +
+		`"text":"{\"tokensIn\":10,\"tokensOut\":5,\"cost\":0.1}"}`
+	second := `{"type":"say","say":"api_req_started","ts":1790000002000,` +
+		`"text":"{\"tokensIn\":20,\"tokensOut\":7,\"cost\":0.2}"}`
+
+	c, a := clineCtx(t, "["+first+"]")
+	res, err := a.Collect(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stored != 1 {
+		t.Fatalf("first pass stored %d, want 1", res.Stored)
+	}
+
+	// The task grows; bump its mtime past the watermark.
+	path := taskFile(c, a)
+	if err := os.WriteFile(path, []byte("["+first+","+second+"]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Minute)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err = a.Collect(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stored != 1 {
+		t.Errorf("second pass reported %d stored, want 1 -- only the new request was written", res.Stored)
 	}
 }

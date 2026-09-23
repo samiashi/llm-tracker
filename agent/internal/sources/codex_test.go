@@ -348,3 +348,79 @@ func TestCodexTokenCountIDsCannotBeMistakenForOrdinalKeys(t *testing.T) {
 		t.Fatalf("native id %q: want a tc: key", evs[0].NativeID)
 	}
 }
+
+func TestCodexSubtractsCachedFromInput(t *testing.T) {
+	fc := fileCtx{Model: "gpt-6-astra", Provider: "openai"}
+	ev, ok := codexEvent(&Ctx{MachineID: "m"}, &fc, "acct", "resp_1", "sess",
+		codexTokenUsage{InputTokens: 44094, CachedInputTokens: 37120, OutputTokens: 116},
+		parseTS("2026-09-21T08:17:02Z"))
+	if !ok {
+		t.Fatal("expected event")
+	}
+	if ev.Usage.InputTokens != 44094-37120 {
+		t.Fatalf("input = %d, want %d -- cached tokens must not be counted twice",
+			ev.Usage.InputTokens, 44094-37120)
+	}
+	if ev.Usage.CacheReadTokens != 37120 {
+		t.Fatalf("cache read = %d, want 37120", ev.Usage.CacheReadTokens)
+	}
+}
+
+// Archiving moves a rollout to archived_sessions/, which is read too; an id
+// that changed with the move would count the session twice.
+func TestCodexEventIdSurvivesArchiving(t *testing.T) {
+	const line = `{"timestamp":"2026-09-20T10:00:00Z","type":"event_msg","ordinal":7,` +
+		`"payload":{"type":"token_count","info":{"last_token_usage":` +
+		`{"input_tokens":1000,"output_tokens":200,"total_tokens":1200},` +
+		`"total_token_usage":{"input_tokens":1000,"output_tokens":200,"total_tokens":1200}}}}`
+
+	collect := func(t *testing.T, rel string) []schema.Event {
+		t.Helper()
+		home := t.TempDir()
+		dir := filepath.Join(home, rel)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		name := "rollout-2026-09-20T10-00-00-019ef8d7-aaaa-bbbb-cccc-ddddeeeeffff.jsonl"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(line+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		st, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { st.Close() })
+
+		c := &Ctx{Store: st, MachineID: "m", Home: home}
+		if _, err := (Codex{}).Collect(context.Background(), c); err != nil {
+			t.Fatal(err)
+		}
+		_, payloads, err := st.Unsent(context.Background(), "event", 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]schema.Event, 0, len(payloads))
+		for _, raw := range payloads {
+			var e schema.Event
+			if json.Unmarshal(raw, &e) == nil {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+
+	live := collect(t, ".codex/sessions/2026/09/20")
+	archived := collect(t, ".codex/archived_sessions")
+
+	if len(live) != 1 || len(archived) != 1 {
+		t.Fatalf("got %d live and %d archived events, want 1 each", len(live), len(archived))
+	}
+	if live[0].ID != archived[0].ID {
+		t.Fatalf("archiving changed the event id: %s -> %s (native %q -> %q); "+
+			"the session would be counted twice",
+			live[0].ID, archived[0].ID, live[0].NativeID, archived[0].NativeID)
+	}
+	if strings.Contains(archived[0].NativeID, string(os.PathSeparator)) {
+		t.Errorf("NativeID carries a filesystem path: %q", archived[0].NativeID)
+	}
+}
