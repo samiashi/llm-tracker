@@ -63,22 +63,27 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 	// Every field is named. `data` also holds a `summary` and, on a failed
 	// call, the provider's entire error response body -- so it is never read
 	// whole, and nothing here can carry a prompt or a completion.
+	//
+	// A subagent runs in a child session of the one that started it, and
+	// that, not the agent's name, is what marks it: opencode's primary agents
+	// include plan and the hidden compaction, title and summary, which all
+	// run in the root session.
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, session_id, time_updated,
-		       json_extract(data,'$.modelID'),
-		       json_extract(data,'$.providerID'),
-		       json_extract(data,'$.variant'),
-		       json_extract(data,'$.agent'),
-		       json_extract(data,'$.cost'),
-		       json_extract(data,'$.tokens.input'),
-		       json_extract(data,'$.tokens.output'),
-		       json_extract(data,'$.tokens.reasoning'),
-		       json_extract(data,'$.tokens.cache.read'),
-		       json_extract(data,'$.tokens.cache.write'),
-		       json_extract(data,'$.time.created')
-		FROM message
-		WHERE time_updated > ? AND json_extract(data,'$.role') = 'assistant'
-		ORDER BY time_updated`, since)
+		SELECT m.id, m.session_id, m.time_updated,
+		       json_extract(m.data,'$.modelID'),
+		       json_extract(m.data,'$.providerID'),
+		       json_extract(m.data,'$.variant'),
+		       COALESCE(s.parent_id, '') <> '',
+		       json_extract(m.data,'$.cost'),
+		       json_extract(m.data,'$.tokens.input'),
+		       json_extract(m.data,'$.tokens.output'),
+		       json_extract(m.data,'$.tokens.reasoning'),
+		       json_extract(m.data,'$.tokens.cache.read'),
+		       json_extract(m.data,'$.tokens.cache.write'),
+		       json_extract(m.data,'$.time.created')
+		FROM message m LEFT JOIN session s ON s.id = m.session_id
+		WHERE m.time_updated > ? AND json_extract(m.data,'$.role') = 'assistant'
+		ORDER BY m.time_updated`, since)
 	if err != nil {
 		return res, err
 	}
@@ -87,16 +92,17 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 	newWatermark := since
 	for rows.Next() {
 		var (
-			id, sessionID                   string
-			updated                         int64
-			model, provider, variant, agent sql.NullString
-			cost                            sql.NullFloat64
-			tin, tout, treason, tcr, tcw    sql.NullInt64
-			created                         sql.NullInt64
+			id, sessionID                string
+			updated                      int64
+			model, provider, variant     sql.NullString
+			subagent                     bool
+			cost                         sql.NullFloat64
+			tin, tout, treason, tcr, tcw sql.NullInt64
+			created                      sql.NullInt64
 		)
 		res.Scanned++
 		if err := rows.Scan(&id, &sessionID, &updated, &model, &provider, &variant,
-			&agent, &cost, &tin, &tout, &treason, &tcr, &tcw, &created); err != nil {
+			&subagent, &cost, &tin, &tout, &treason, &tcr, &tcw, &created); err != nil {
 			res.Errors = append(res.Errors, err)
 			continue
 		}
@@ -144,7 +150,7 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			Effort:     variant.String,
 			Usage:      usage,
 			SessionID:  sessionID,
-			IsSubagent: agent.String != "" && agent.String != "build",
+			IsSubagent: subagent,
 			// opencode talks to provider APIs with real keys, so this is
 			// metered spend rather than seat usage.
 			CostBasis: schema.CostBilled,

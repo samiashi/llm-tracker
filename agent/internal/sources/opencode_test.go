@@ -14,7 +14,7 @@ import (
 )
 
 // openCodeCtx builds a collector pointed at a fake home holding an opencode
-// database with the given assistant messages.
+// database with the given assistant messages, all in one root session.
 func openCodeCtx(t *testing.T, messages ...string) *Ctx {
 	t.Helper()
 	home := t.TempDir()
@@ -27,11 +27,17 @@ func openCodeCtx(t *testing.T, messages ...string) *Ctx {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`CREATE TABLE message (
-		id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
-		time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL,
-		data TEXT NOT NULL)`); err != nil {
-		t.Fatal(err)
+	for _, ddl := range []string{
+		`CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT)`,
+		`CREATE TABLE message (
+			id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+			time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL,
+			data TEXT NOT NULL)`,
+		`INSERT INTO session (id) VALUES ('ses_1')`,
+	} {
+		if _, err := db.Exec(ddl); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i, m := range messages {
 		if _, err := db.Exec(
@@ -161,5 +167,42 @@ func TestOpenCodeKeepsAZeroCostButNotAMissingOne(t *testing.T) {
 	}
 	if v := byInput[20]; v != nil {
 		t.Errorf("missing cost = %v, want none so the table prices it", *v)
+	}
+}
+
+// A subagent runs in a child session. Its agent's name does not say so:
+// opencode's primary agents include plan and the hidden compaction, title and
+// summary, which run in the root session.
+func TestOpenCodeMarksSubagentsByTheirChildSession(t *testing.T) {
+	msg := func(agent string) string {
+		return `{"role":"assistant","modelID":"m","providerID":"p","agent":"` + agent + `",` +
+			`"tokens":{"input":10,"output":1,"reasoning":0,"cache":{"read":0,"write":0}},` +
+			`"time":{"created":1780000000000}}`
+	}
+	c := openCodeCtx(t, msg("build"), msg("plan"), msg("compaction"))
+	db, err := sql.Open("sqlite", filepath.Join(c.Home, ".local", "share", "opencode", "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO session (id, parent_id) VALUES ('ses_2', 'ses_1')`); err != nil {
+		t.Fatal(err)
+	}
+	for i, agent := range []string{"general", "explore"} {
+		if _, err := db.Exec(
+			`INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?)`,
+			fmt.Sprintf("child_%d", i), "ses_2", 1_780_000_000_000, 1_780_000_000_000, msg(agent)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := collected(t, c)
+	if len(got) != 5 {
+		t.Fatalf("got %d events, want 5", len(got))
+	}
+	for _, e := range got {
+		if want := e.SessionID == "ses_2"; e.IsSubagent != want {
+			t.Errorf("%s in %s: subagent = %v, want %v", e.NativeID, e.SessionID, e.IsSubagent, want)
+		}
 	}
 }

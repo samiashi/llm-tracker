@@ -299,6 +299,7 @@ func openCodeHome(t *testing.T) (home string, respond func(input, updated int64)
 			t.Fatal(err)
 		}
 	}
+	exec(`CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT)`)
 	exec(`CREATE TABLE message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
 		time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL)`)
 	return home, func(input, updated int64) {

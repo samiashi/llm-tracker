@@ -89,3 +89,15 @@ func TestEverySourcePurgedOnUpgradeKeepsItsHistory(t *testing.T) {
 		}
 	}
 }
+
+// Version 10 corrected opencode's subagent flag. The bump alone changes only
+// conflict resolution: without the re-read, every stored row keeps the flag
+// it was read with.
+func TestCrossingTenReReadsWhatItCorrected(t *testing.T) {
+	got := SourcesNeedingBackfill(9)
+	for _, s := range []schema.Source{schema.SourceOpenCode} {
+		if !slices.Contains(got, s) {
+			t.Errorf("SourcesNeedingBackfill(9) = %v, missing %s", got, s)
+		}
+	}
+}

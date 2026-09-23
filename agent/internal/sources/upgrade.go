@@ -21,7 +21,8 @@ import "github.com/samiashi/llm-tracker/schema"
 //	   attributes each response from the rollout's own header and time;
 //	   Continue keys on the file's path under dev_data; Claude Code and
 //	   Cowork count the attempt a model fallback abandoned.
-const CollectorVersion = 9
+//	10: opencode marks a subagent by its child session, not its agent's name.
+const CollectorVersion = 10
 
 // backfillOnUpgrade names, for each collector version, the sources whose
 // stored rows that version invalidates. Crossing it resets their cursors, so
@@ -45,6 +46,9 @@ var backfillOnUpgrade = map[int][]schema.Source{
 		schema.SourceContinue,   // re-keyed on the path under dev_data
 		schema.SourceClaudeCode, // a fallback's abandoned attempt is newly counted
 		schema.SourceCowork,     // the same parser as Claude Code
+	},
+	10: {
+		schema.SourceOpenCode, // subagent flag corrected
 	},
 }
 
