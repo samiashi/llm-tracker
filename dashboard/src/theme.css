@@ -1,0 +1,1182 @@
+/* Design tokens. Dark mode is its own set of steps for the dark surface, not
+   an inversion of the light one. */
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --page: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+
+  /* Categorical slots in fixed order, assigned by position (see palette.ts). */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #4a3aa7;
+  --series-7: #0f7d8c;
+  --series-8: #a8442c;
+  --series-9: #6b6f76;
+  /* Neutral: the overflow bucket is the absence of a category, not another one. */
+  --muted-fill: #b9bec6;
+
+  /* Sequential ramp for the heatmap: one hue, light to dark. */
+  --seq-0: #f0efec;
+  --seq-1: #cde2fb;
+  --seq-2: #9ec5f4;
+  --seq-3: #6da7ec;
+  --seq-4: #3987e5;
+  --seq-5: #256abf;
+  --seq-6: #104281;
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+
+  --radius: 10px;
+  --font: ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #9085e9;
+    --series-7: #21a0b1;
+    --series-8: #cf5a3c;
+    --series-9: #8b9099;
+    --muted-fill: #565c66;
+    --seq-0: #383835;
+    --seq-1: #104281;
+    --seq-2: #184f95;
+    --seq-3: #256abf;
+    --seq-4: #2a78d6;
+    --seq-5: #5598e7;
+    --seq-6: #9ec5f4;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 16px 72px;
+}
+
+header.top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+header.top .right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+header.top h1 {
+  font-size: 19px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.sub {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 18px 0 22px;
+}
+.filters button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  cursor: pointer;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border: 1px solid var(--grid);
+  border-radius: 999px;
+}
+.filters button[aria-pressed="true"] {
+  color: var(--text-primary);
+  border-color: var(--axis);
+  font-weight: 550;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+}
+/* A floor wide enough that a hint does not wrap to four lines, and an even
+   split so five tiles share the row rather than one stretching. */
+.tiles {
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+}
+.two {
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--grid);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.card h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 2px;
+  letter-spacing: -0.005em;
+}
+.card .note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+  line-height: 1.45;
+}
+
+/* Title and the card's one control on a line. */
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: -4px -6px 0 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.icon-button:hover {
+  color: var(--text-primary);
+  border-color: var(--grid);
+}
+.icon-button:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+/* An expanded card, over the page. It sizes to its content up to the
+   viewport, so a two-row list is not stranded in an empty screen, and the
+   charts take their height from the viewport instead. */
+dialog.expanded {
+  width: min(1200px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--grid);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+dialog.expanded::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+dialog.expanded .panel {
+  box-sizing: border-box;
+  max-height: calc(100dvh - 34px);
+  overflow: auto;
+  padding: 18px 22px 22px;
+}
+/* Every day of the range, rather than a scroll inside a scroll. */
+dialog.expanded .heat2 .hbody {
+  max-height: none;
+}
+/* The page behind keeps its place instead of scrolling under the dialog. The
+   gutter stays reserved while it does, or wherever scrollbars take space the
+   page would shift sideways by their width. */
+html {
+  scrollbar-gutter: stable;
+}
+html:has(dialog.expanded[open]) {
+  overflow: hidden;
+}
+
+/* Stat tile: a column with fixed slots, so values and deltas line up across
+   the row however many lines each hint wraps to. */
+.card.tile {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px 18px;
+}
+.tile .label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  min-height: 16px;
+}
+.tile .value {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  margin-bottom: 6px;
+}
+/* Reserved whether or not a delta is present, so every value aligns. */
+.tile .delta {
+  min-height: 17px;
+}
+/* Pinned to the bottom so hints of one, two and three lines all end level. */
+.tile .hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+/* Bar list labels are always visible, which is also the relief for the
+   light-mode contrast warning on two of the series hues. */
+.barlist {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.barrow .head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  margin-bottom: 4px;
+}
+.barrow .name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.barrow .val {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.bartrack {
+  height: 8px;
+  background: var(--grid);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.barfill {
+  height: 100%;
+  border-radius: 4px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+th {
+  text-align: left;
+  font-weight: 550;
+  color: var(--text-secondary);
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+}
+td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--grid);
+  color: var(--text-primary);
+}
+/* A right-aligned value needs a right-aligned header, or the column reads as
+   two separate things stacked on each other. */
+th.num,
+td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+td.num {
+  color: var(--text-secondary);
+}
+th:last-child,
+td:last-child {
+  padding-right: 0;
+}
+tr:last-child td {
+  border-bottom: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  padding: 10px 0;
+}
+/* A failed request, which is not an empty range: marked so the two never look alike. */
+.empty.failed {
+  color: var(--text-secondary);
+  border-left: 3px solid var(--critical);
+  padding-left: 10px;
+}
+.banner.loadfail {
+  border-left-color: var(--critical);
+}
+.banner.loadfail button {
+  font: inherit;
+  font-size: 12.5px;
+  margin-left: 6px;
+  padding: 3px 12px;
+  cursor: pointer;
+  border-radius: 999px;
+  border: 1px solid var(--axis);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.tooltip {
+  background: var(--surface-1);
+  border: 1px solid var(--axis);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.12);
+}
+.tooltip .t-day {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+.tooltip .t-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  color: var(--text-secondary);
+}
+.tooltip .t-row b {
+  color: var(--text-primary);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.tooltip .t-total {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--grid);
+}
+
+.banner {
+  border: 1px solid var(--grid);
+  border-left: 3px solid var(--warning);
+  background: var(--surface-1);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.banner b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .wrap {
+    padding: 20px 16px 56px;
+  }
+  .two {
+    grid-template-columns: 1fr;
+  }
+}
+
+.filters input[type="date"] {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 9px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border: 1px solid var(--grid);
+  border-radius: 7px;
+}
+.filters .sep {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.filters .tz {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: help;
+}
+.filters .tz-pill {
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.barrow.clickable {
+  cursor: pointer;
+  border-radius: 6px;
+  margin: -3px -5px;
+  padding: 3px 5px;
+}
+.barrow.clickable:hover {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+.barrow.clickable:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+.barrow.selected {
+  background: color-mix(in srgb, var(--series-1) 12%, transparent);
+}
+
+/* The active drill-down, shown as a dismissible chip. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  padding: 4px 6px 4px 11px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--series-1) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--series-1) 35%, transparent);
+  color: var(--text-primary);
+}
+.chip button {
+  all: unset;
+  cursor: pointer;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.chip button:hover {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  color: var(--text-primary);
+}
+
+/* --- Date x hour activity grid ------------------------------------------ */
+/* The label and total columns are fixed so every row aligns; only the hour
+   cells flex. */
+.heat2 {
+  --label-w: 92px;
+  --total-w: 96px;
+  min-width: 620px;
+}
+.heat2 .hhead,
+.heat2 .hrow {
+  display: grid;
+  grid-template-columns: var(--label-w) repeat(24, minmax(0, 1fr)) var(--total-w);
+  gap: 2px;
+  align-items: center;
+}
+.heat2 .hhead {
+  margin-bottom: 4px;
+}
+.heat2 .collabel {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.heat2 .totlabel {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  text-align: right;
+  padding-right: 2px;
+}
+
+/* Long ranges scroll rather than pushing everything else off the page. */
+.heat2 .hbody {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.heat2 .hrow {
+  height: 16px;
+  margin-bottom: 2px;
+}
+.heat2 .rowlabel {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 4px;
+}
+/* A day with no work is dimmed, not skipped (see Heatmap.tsx). */
+.heat2 .hrow.idle .rowlabel {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.heat2 .cell {
+  height: 14px;
+  border-radius: 2px;
+  outline: 1.5px solid transparent;
+  transition: outline-color 90ms ease;
+}
+.heat2 .cell:focus-visible {
+  outline-color: var(--text-primary);
+}
+/* The hovered or focused cell, its row and its hour's column, drawn over the
+   grid rather than by restyling cells. */
+.heat2 .hmark {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1.5px var(--text-primary);
+}
+.heat2 .hmark.axis {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+/* A server-local day just outside the selected UTC range. */
+.heat2 .hrow.outside .rowlabel {
+  font-style: italic;
+}
+.heatpruned {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border: 1px dashed var(--grid);
+  border-radius: 6px;
+}
+
+/* Day total: a bar for shape, plus the number. */
+.heat2 .rowtotal {
+  position: relative;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.heat2 .rowbar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  background: color-mix(in srgb, var(--series-1) 26%, transparent);
+  border-radius: 2px;
+}
+.heat2 .rowtext {
+  position: relative;
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  padding-right: 3px;
+}
+
+.heathint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
+/* --- Cell tooltip -------------------------------------------------------- */
+.heat2 {
+  position: relative;
+}
+.heattip {
+  position: fixed;
+  z-index: 5;
+  pointer-events: none;
+  min-width: 180px;
+  background: var(--surface-1);
+  border: 1px solid var(--axis);
+  border-radius: 8px;
+  padding: 9px 11px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.16);
+  font-size: 12px;
+  animation: tipin 90ms ease-out;
+}
+
+@keyframes tipin {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heattip {
+    animation: none;
+  }
+}
+
+/* A small arrow ties the tooltip to the cell it describes, even when the
+   tooltip is pushed sideways to stay inside the window. */
+.heattip::after {
+  content: "";
+  position: absolute;
+  left: var(--arrow-x, 50%);
+  margin-left: -5px;
+  border: 5px solid transparent;
+}
+.heattip:not([data-side="below"])::after {
+  top: 100%;
+  border-top-color: var(--axis);
+}
+.heattip[data-side="below"]::after {
+  bottom: 100%;
+  border-bottom-color: var(--axis);
+}
+
+.heattip .t-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 7px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--grid);
+  white-space: nowrap;
+}
+.heattip .t-hour {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.heattip .t-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-secondary);
+  line-height: 1.75;
+  white-space: nowrap;
+}
+.heattip .t-row b {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* The day total is context for the figures above it, not another of them. */
+.heattip .t-sep {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--grid);
+}
+.heattip .t-idle {
+  color: var(--text-muted);
+  justify-content: flex-start;
+}
+
+.heatfoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.heatfoot .cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.heatfoot .pill {
+  gap: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heat2 .cell {
+    transition: none;
+  }
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+.scroll {
+  overflow-x: auto;
+}
+
+/* --- Freshness indicator ------------------------------------------------- */
+.freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.freshness .pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 60%, transparent);
+}
+/* A brief flash confirms a refresh actually landed. Without it an auto-updating
+   page is indistinguishable from a frozen one. */
+.freshness .pulse.live {
+  animation: ping 1.6s ease-out;
+}
+@keyframes ping {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 70%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+.freshness .pulse.stale {
+  background: var(--warning);
+}
+.freshness .pulse.error {
+  background: var(--critical);
+}
+.freshness button {
+  all: unset;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--grid);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+.freshness button:hover {
+  color: var(--text-primary);
+  border-color: var(--axis);
+}
+@media (prefers-reduced-motion: reduce) {
+  .freshness .pulse.live {
+    animation: none;
+  }
+}
+
+/* --- Loading skeleton ---------------------------------------------------- */
+.sk {
+  background: var(--grid);
+  border-radius: 6px;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.sk.line {
+  height: 11px;
+  margin: 7px 0;
+}
+.sk.value {
+  height: 26px;
+  width: 58%;
+  margin: 6px 0 10px;
+}
+.sk.chart {
+  height: 200px;
+  margin-top: 12px;
+}
+.sk.bar {
+  height: 8px;
+  border-radius: 4px;
+}
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+/* Below the title's own wrap point the status returns to its own line rather
+   than squeezing the heading. */
+@media (max-width: 720px) {
+  header.top .right {
+    margin-left: 0;
+    width: 100%;
+  }
+  .freshness .cadence {
+    display: none;
+  }
+}
+
+/* --- Unsupported-harness table ------------------------------------------ */
+.tag {
+  display: inline-block;
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--grid);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* Blocked is a recorded decision, not a warning, so it takes no status colour. */
+.tag.blocked {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+.tag.todo {
+  color: var(--series-1);
+  border-color: color-mix(in srgb, var(--series-1) 40%, transparent);
+  background: color-mix(in srgb, var(--series-1) 10%, transparent);
+}
+.rownote {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  max-width: 46ch;
+  line-height: 1.45;
+}
+.pathcell {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+/* --- Period delta on stat tiles ----------------------------------------- */
+/* Uncoloured on purpose: see Delta in parts.tsx. */
+.tile .delta {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.tile .delta .arrow {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.tile .delta .vs {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.tile .delta.muted {
+  color: var(--text-muted);
+}
+
+/* --- Export -------------------------------------------------------------- */
+header.top .export {
+  font-size: 12.5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--grid);
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+header.top .export:hover {
+  color: var(--text-primary);
+  border-color: var(--axis);
+}
+
+/* --- Two-dimensional stacked bars --------------------------------------- */
+.matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mrow .head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  margin-bottom: 5px;
+}
+.mrow .name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mrow .val {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.mrow .val .cost {
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+.mtrack {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  min-width: 3%;
+}
+/* A hairline of surface between segments keeps adjacent hues readable where
+   they sit close together on the categorical ramp. */
+.mseg {
+  transition: filter 90ms ease;
+  box-shadow: inset -1px 0 0 var(--surface-1);
+}
+.mseg:last-child {
+  box-shadow: none;
+}
+.mseg:hover {
+  filter: brightness(1.18);
+}
+.msum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.mitem {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* --- Token composition --------------------------------------------------- */
+.comp-bar {
+  display: flex;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.comp-bar > span {
+  box-shadow: inset -1px 0 0 var(--surface-1);
+}
+.comp-bar > span:last-child {
+  box-shadow: none;
+}
+.comp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.comp-list li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.comp-list li:last-child {
+  border-bottom: none;
+}
+.comp-list .label {
+  flex: 1;
+  color: var(--text-primary);
+}
+.comp-list .pct {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.comp-list .abs {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+  text-align: right;
+}
+.comp-note {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+.more {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+/* The same line as a control: it opens the card with every row. */
+button.more {
+  display: block;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  text-align: left;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+button.more:hover {
+  color: var(--text-primary);
+  text-decoration-style: solid;
+}
+button.more:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+/* --- Loading a new range ------------------------------------------------- */
+/* A filter change keeps the old numbers visible: a skeleton would unmount the
+   date inputs mid-interaction and drop keyboard focus. These two signals say
+   the figures on screen are stale. */
+.loadbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 50;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--series-1) 40%,
+    var(--series-1) 60%,
+    transparent
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: loadsweep 1.1s ease-in-out infinite;
+}
+@keyframes loadsweep {
+  0% {
+    background-position: -40% 0;
+  }
+  100% {
+    background-position: 140% 0;
+  }
+}
+
+/* Dimmed and non-interactive: a chart that is about to be replaced should not
+   invite a hover that reports a figure from the previous range. */
+.stale-data {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadbar {
+    animation: none;
+    background: var(--series-1);
+  }
+  .stale-data {
+    transition: none;
+  }
+}
+
+/* --- Agent check-in status ------------------------------------------------ */
+/* Colour is never the sole signal: the cell's title says what the state means.
+   Its own class, so it cannot restyle legend dots. */
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
+  background: var(--good);
+}
+.status-dot.quiet {
+  background: var(--warning);
+}
+.status-dot.offline {
+  background: var(--critical);
+}
+.status-dot.skewed {
+  background: var(--warning);
+  /* Ringed, so it reads apart from `quiet`, which shares its colour. */
+  box-shadow:
+    0 0 0 2px var(--surface-1),
+    0 0 0 3px var(--warning);
+}
+
+/* --- Collapsible card ----------------------------------------------------- */
+/* A <details> card: the summary carries the same heading as an open card, and
+   adds only the disclosure marker and the pointer. */
+details.card > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+details.card > summary::-webkit-details-marker {
+  display: none;
+}
+details.card > summary::before {
+  content: "›";
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+details.card[open] > summary::before {
+  transform: rotate(90deg);
+}
+details.card > summary h2 {
+  margin: 0;
+}
+details.card > summary:hover::before {
+  color: var(--text-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  details.card > summary::before {
+    transition: none;
+  }
+}
