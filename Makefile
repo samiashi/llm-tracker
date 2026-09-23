@@ -1,5 +1,5 @@
-GO      ?= go
-BIN     ?= bin
+GO       = go
+BIN      = bin
 # := rather than ?=, so a VERSION exported by a shell or a sourced .env cannot
 # stamp a dirty build as a release. `make VERSION=v1.4.0 ...` still overrides.
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -11,7 +11,11 @@ GOPKGS   = ./schema/... ./agent/... ./server/...
 # that 404s, with no error at build time.
 .NOTPARALLEL:
 
-.PHONY: all build agent server dashboard image prices test test-go test-dashboard lint lint-go lint-dashboard fmt clean dev install run-server tools
+# No built-in suffix rules, which nothing here uses: one of them answers
+# `make install` by copying install.sh to ./install.
+.SUFFIXES:
+
+.PHONY: all build agent server dashboard image prices test test-go test-dashboard lint lint-go lint-dashboard fmt clean run-server tools
 
 all: build
 
@@ -70,23 +74,14 @@ fmt:
 	golangci-lint fmt $(GOPKGS)
 	cd dashboard && npm run format && npm run lint:fix
 
-## tools: install the linters this repo expects
+## tools: check golangci-lint is installed, and install the dashboard's npm dependencies
 tools:
 	@command -v golangci-lint >/dev/null || { echo "install golangci-lint: brew install golangci-lint"; exit 1; }
 	cd dashboard && npm ci --silent
 
-## dev: server on :8790 and the dashboard on :5178 proxying to it
-dev:
-	@echo "run in two shells:"
-	@echo "  make run-server"
-	@echo "  cd dashboard && npm run dev"
-
 # The server takes its GitHub auth settings from .env (see .env.example).
 run-server:
 	set -a && . ./.env && set +a && cd server && $(GO) run . -v -db ../llm-tracker.db
-
-install: agent
-	./$(BIN)/llm-tracker-agent install
 
 # Keeps dist/.gitkeep, which //go:embed needs to compile. -exec rm, not
 # -delete: -delete implies -depth on BSD find, and the ! -name guard then fails
