@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -172,5 +173,70 @@ func TestTailerRestartsAFileThatShrankButNotPastTheCursor(t *testing.T) {
 	}
 	if got := read(); !slices.Equal(got, []int{10, 20, 7}) {
 		t.Fatalf("read %v from the rewritten file, want all of it", got)
+	}
+}
+
+// Invariant 2. A pass whose rows fail to store must leave the file's cursor
+// and its parser state where they were, so the next pass reads those lines
+// again: committed first, the bytes count as read and their usage is lost
+// for good once the harness deletes the file.
+func TestARowCommitThatFailsMovesNeitherCursorNorParserState(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".codex/sessions/2026/09/20",
+		"rollout-2026-09-20T10-00-00-019ef8d7-aaaa-bbbb-cccc-ddddeeeeffff.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"timestamp":"2026-09-20T10:00:00Z","type":"session_meta","payload":{"id":"s1","originator":"codex_cli_rs"}}` + "\n" +
+		`{"timestamp":"2026-09-20T10:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{` +
+		`"last_token_usage":{"input_tokens":1000,"output_tokens":200,"total_tokens":1200},` +
+		`"total_token_usage":{"input_tokens":1000,"output_tokens":200,"total_tokens":1200}}}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "t.db")
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	// The disk refuses the rows, as a full or failing one would.
+	raw, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { raw.Close() })
+	if _, err := raw.Exec(`CREATE TRIGGER refuse BEFORE INSERT ON event
+		BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	res, err := (Codex{}).Collect(ctx, &Ctx{Store: st, MachineID: "m", Home: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Errors) == 0 {
+		t.Fatal("setup: the refused rows were not reported")
+	}
+	if off, _, _ := st.Cursor(ctx, path); off != 0 {
+		t.Fatalf("cursor at %d although its rows were refused: those lines are never read again", off)
+	}
+	if v, _ := st.Meta(ctx, codexCtxKey+path); v != "" {
+		t.Fatalf("parser state %s committed without the rows it goes with", v)
+	}
+
+	if _, err := raw.Exec(`DROP TRIGGER refuse`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Codex{}).Collect(ctx, &Ctx{Store: st, MachineID: "m", Home: home}); err != nil {
+		t.Fatal(err)
+	}
+	if evs := storedEvents(t, st); len(evs) != 1 || evs[0].Usage.TotalTokens() != 1200 {
+		t.Fatalf("stored %+v after the disk recovered, want the one response", evs)
+	}
+	if off, _, _ := st.Cursor(ctx, path); off != int64(len(body)) {
+		t.Fatalf("cursor at %d after a clean pass, want %d", off, len(body))
 	}
 }

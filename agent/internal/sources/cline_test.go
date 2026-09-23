@@ -114,25 +114,6 @@ func TestClineTakesModelFromModelInfo(t *testing.T) {
 	}
 }
 
-func TestClineKeepsRequestsInTheSameMillisecondApart(t *testing.T) {
-	c, a := clineCtx(t, `[
-	  {"type":"say","say":"api_req_started","ts":1790000001000,
-	   "text":"{\"tokensIn\":10,\"tokensOut\":5}"},
-	  {"type":"say","say":"api_req_started","ts":1790000001000,
-	   "text":"{\"tokensIn\":20,\"tokensOut\":7}"}
-	]`)
-	if _, err := a.readTask(c, taskFile(c, a), "task-1"); err != nil {
-		t.Fatal(err)
-	}
-	events := c.Drain()
-	if len(events) != 2 {
-		t.Fatalf("got %d events, want 2", len(events))
-	}
-	if events[0].ID == events[1].ID {
-		t.Fatal("both requests share an id, so one would overwrite the other")
-	}
-}
-
 func TestClineSkipsAHalfWrittenTask(t *testing.T) {
 	c, a := clineCtx(t, `[{"type":"say","say":"api_req_started","ts":179000000`)
 	res, err := a.Collect(context.Background(), c)

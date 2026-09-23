@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -19,6 +20,21 @@ import (
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
 )
+
+// Push names the accounts signed in on the machine, read from $HOME: without
+// a HOME of the tests' own, every test here reads the developer's own
+// ~/.claude.json and ~/.codex/auth.json and uploads their logins to the fake
+// server.
+func TestMain(m *testing.M) {
+	home, err := os.MkdirTemp("", "tracker-test-home")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("HOME", home)
+	code := m.Run()
+	_ = os.RemoveAll(home)
+	os.Exit(code)
+}
 
 // jsonKeys lists the keys a type can put on the wire, following
 // encoding/json's rule for embedded structs: their fields are promoted, and a
@@ -373,5 +389,87 @@ func TestRowsAboveALoweredFloorAreOfferedAgain(t *testing.T) {
 	}
 	if n := unsent(t, st); n != 0 {
 		t.Fatalf("%d rows still queued; the re-offered row should have been delivered", n)
+	}
+}
+
+// retainingServer acknowledges every batch as a server whose retention floor
+// is floor would: refusing each event whose UTC day falls below it, as ingest
+// does, when enforced.
+func retainingServer(t *testing.T, floor string, enforced bool) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := io.Reader(r.Body)
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			zr, err := gzip.NewReader(r.Body)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			body = zr
+		}
+		var b schema.Batch
+		_ = json.NewDecoder(body).Decode(&b)
+		a := schema.IngestAck{ServerVersion: "v1.0.0", RetentionEnforced: enforced}
+		if enforced {
+			a.RetentionFloor = floor
+		}
+		for _, e := range b.Events {
+			a.EventsReceived++
+			if enforced && e.TS.UTC().Format(time.DateOnly) < floor {
+				a.EventsSkipped++
+			}
+		}
+		_ = json.NewEncoder(w).Encode(a)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// Told nothing is refused any more, the agent delivers what the server
+// refused before; otherwise turning pruning off never brings that backlog in.
+func TestAServerThatKeepsEverythingGetsTheRefusedBacklog(t *testing.T) {
+	st := storeWith(t, 2)
+	ctx := context.Background()
+	if n, err := st.Refused(ctx, time.Now().Add(time.Hour)); err != nil || n != 2 {
+		t.Fatalf("setup: refused %d (%v)", n, err)
+	}
+	if _, err := New(retainingServer(t, "", false).URL, "t", "v1.0.0", quietLog()).Push(ctx, st, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := st.CountRefused(ctx); n != 0 {
+		t.Fatalf("%d rows still refused by a server that keeps everything", n)
+	}
+	if n := unsent(t, st); n != 0 {
+		t.Fatalf("%d rows re-queued but not delivered", n)
+	}
+}
+
+// The floor is a UTC day, as the server derives an event's day. Read in the
+// local zone it retires rows the server would take (west of UTC), or keeps
+// offering rows it refuses (east of it), and the push stalls on them. Only
+// the run under America/Santiago can tell the two apart.
+func TestRowsAreRetiredOnTheFloorsUTCDay(t *testing.T) {
+	st := storeWith(t, 0)
+	ctx := context.Background()
+	var recs []store.Record
+	for _, ts := range []string{"2026-01-31T22:00:00Z", "2026-02-01T01:00:00Z"} {
+		at, err := time.Parse(time.RFC3339, ts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recs = append(recs, store.Record{ID: ts, TS: at, TotalTokens: 1, Collector: 1,
+			Payload: schema.Event{ID: ts, TS: at}})
+	}
+	if _, err := st.CommitFile(ctx, "", 0, 0, recs, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(retainingServer(t, "2026-02-01", true).URL, "t", "v1.0.0", quietLog()).Push(ctx, st, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := st.CountRefused(ctx); n != 1 {
+		t.Fatalf("refused = %d, want only the row before the floor's UTC day", n)
+	}
+	if n := unsent(t, st); n != 0 {
+		t.Fatalf("%d rows left queued", n)
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -322,4 +324,88 @@ func TestTimestampsParseWithAndWithoutFractions(t *testing.T) {
 			t.Errorf("parseTS(%q) = %v, want %v", in, got, want)
 		}
 	}
+}
+
+// Invariant 9: an id is the key the archive and the server upsert on, so a
+// change to how one is derived -- MakeID, or an adapter's native id -- sends
+// every re-read record back under a new key, beside its old row, and doubles
+// it. Pinned per adapter, so such a change fails here and arrives with a
+// CollectorVersion bump, a dedupe or purge rule and a server migration.
+func TestEventIDsAreStableAcrossReleases(t *testing.T) {
+	type id struct{ native, id string }
+	usage := `"usage":{"prompt_tokens":100,"completion_tokens":10}`
+	for _, tc := range []struct {
+		name string
+		a    Adapter
+		rel  string
+		body string
+		want []id
+	}{
+		{"claude code, with a fallback's abandoned attempt", ClaudeCode{},
+			".claude/projects/-Users-dev-app/s1.jsonl",
+			`{"type":"assistant","requestId":"req_1","sessionId":"s1","timestamp":"2026-09-22T10:00:00Z",` +
+				`"message":{"id":"msg_1","model":"claude-sonnet-5","usage":{"input_tokens":10,"output_tokens":20,` +
+				`"iterations":[{"type":"message","model":"claude-opus-5","input_tokens":1000,"output_tokens":50},` +
+				`{"type":"fallback_message","model":"claude-sonnet-5","input_tokens":10,"output_tokens":20}]}}}`,
+			[]id{{"req_1|msg_1", "2476b4585b7e672eed5cd5785e6d0c6f"}, {"req_1|msg_1#0", "ba500c1522e4fc96747fb8d17f10e0cf"}}},
+		{"cowork", Cowork{},
+			"Library/Application Support/Claude/local-agent-mode-sessions/a/o/s/t.jsonl",
+			`{"type":"assistant","request_id":"req_1","session_id":"s1","timestamp":"2026-09-22T10:00:00Z",` +
+				`"message":{"id":"msg_1","model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":20}}}`,
+			[]id{{"req_1|msg_1", "7ca31a2bc7c6c28c71ae8f9cf04a30d2"}}},
+		{"codex token_count", Codex{},
+			".codex/sessions/2026/09/20/rollout-2026-09-20T10-00-00-019ef8d7-aaaa-bbbb-cccc-ddddeeeeffff.jsonl",
+			`{"timestamp":"2026-09-20T10:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{` +
+				`"last_token_usage":{"input_tokens":1000,"output_tokens":200,"total_tokens":1200},` +
+				`"total_token_usage":{"input_tokens":1000,"output_tokens":200,"total_tokens":1200}}}}`,
+			[]id{{"tc:259693568b688483418f3a94161019e2", "f1299bced0bc488ad86ac4bdec955d57"}}},
+		{"codex token_usage_record", Codex{},
+			".codex/sessions/2026/09/20/rollout-2026-09-20T10-00-00-019ef8d7-aaaa-bbbb-cccc-ddddeeeeffff.jsonl",
+			`{"timestamp":"2026-09-20T10:00:00Z","type":"token_usage_record","payload":{"response_id":"resp_1",` +
+				`"usage":{"input_tokens":1000,"output_tokens":200,"total_tokens":1200}}}`,
+			[]id{{"resp_1", "e8340400b55296ed5e0fdc1c40e3588f"}}},
+		{"cline", clineFamily{name: schema.SourceCline,
+			root: "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks"},
+			"Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks/task-1/ui_messages.json",
+			`[{"type":"say","say":"api_req_started","ts":1790000001000,"text":"{\"tokensIn\":10,\"tokensOut\":5}"}]`,
+			[]id{{"task-1#1790000001000#0", "c6772de558563d1855b9d4ae4af31022"}}},
+		{"continue", ContinueDev{}, ".continue/dev_data/0.2.0/tokensGenerated.jsonl",
+			`{"timestamp":"2026-09-20T10:00:00Z","model":"claude-opus-5","promptTokens":100,"generatedTokens":10}`,
+			[]id{{"m:0.2.0/tokensGenerated.jsonl#0", "977babc189f7b7b15d5a3cf88032d53c"}}},
+		{"gemini", Gemini{}, ".gemini/tmp/proj/session-1.json",
+			`{"sessionId":"s1","model":"gemini-3-pro","session_input_tokens":100,"session_output_tokens":20}`,
+			[]id{{"s1", "84801023e18f01e596f0743f899df8ab"}}},
+		{"kimi", Kimi{}, ".kimi/sessions/h/s/wire.jsonl",
+			`{"type":"usage.record","scope":"turn","request_id":"req_1","timestamp":"2026-09-20T10:00:00Z",` + usage + `}`,
+			[]id{{"req_1", "ee6ffd82e6e3980750067c0272428386"}}},
+		{"dsh", DeepSeekHarness{}, ".dsh/s.jsonl",
+			`{"request_id":"req_1","timestamp":"2026-09-20T10:00:00Z",` + usage + `}`,
+			[]id{{"req_1", "09d60aa0d4409c16c8bdc968b3ea0ab8"}}},
+		{"zcode", ZCode{}, ".zcode/sessions/s.jsonl",
+			`{"request_id":"req_1","timestamp":"2026-09-20T10:00:00Z",` + usage + `}`,
+			[]id{{"req_1", "8c696f417a52607ad91e7616205a0b28"}}},
+		{"copilot", Copilot{}, ".copilot/session-state/s.jsonl",
+			`{"requestId":"req_1","timestamp":"2026-09-20T10:00:00Z",` + usage + `}`,
+			[]id{{"req_1", "2f62e1d4234ad5603c2638b0da810626"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []id
+			for _, e := range collectAndCommit(t, tc.a, tc.rel, tc.body+"\n") {
+				got = append(got, id{e.NativeID, e.ID})
+			}
+			slices.SortFunc(got, func(a, b id) int { return strings.Compare(a.native, b.native) })
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("ids %+v, want %+v: a re-key doubles every record re-read under it", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("opencode", func(t *testing.T) {
+		c := openCodeCtx(t, `{"role":"assistant","modelID":"m","providerID":"p",`+
+			`"tokens":{"input":10,"output":1,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1780000000000}}`)
+		got := collected(t, c)
+		if want := (id{"msg_0", "d5f7a54cef662cef6d0acff143f44229"}); len(got) != 1 || (id{got[0].NativeID, got[0].ID}) != want {
+			t.Fatalf("ids %+v, want %+v", got, want)
+		}
+	})
 }

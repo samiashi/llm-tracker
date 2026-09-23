@@ -18,6 +18,20 @@ import (
 	"github.com/samiashi/llm-tracker/schema"
 )
 
+// Run reads who is signed in from $HOME. Tests that call it point HOME at a
+// directory of their own; this keeps any that forget off the developer's
+// real ~/.claude.json and ~/.codex/auth.json.
+func TestMain(m *testing.M) {
+	home, err := os.MkdirTemp("", "collect-test-home")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("HOME", home)
+	code := m.Run()
+	_ = os.RemoveAll(home)
+	os.Exit(code)
+}
+
 // The totals the daemon logs each pass.
 func TestSummaryTotals(t *testing.T) {
 	s := &Summary{PerSource: map[schema.Source]SourceSummary{

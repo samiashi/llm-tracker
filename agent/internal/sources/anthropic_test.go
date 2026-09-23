@@ -1,9 +1,13 @@
 package sources
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/schema"
 )
 
@@ -114,5 +118,40 @@ func TestProviderInferredFromModelName(t *testing.T) {
 		if got := inferProvider(model); got != want {
 			t.Errorf("inferProvider(%q) = %q, want %q", model, got, want)
 		}
+	}
+}
+
+// Cowork files each session under the account that ran it, which is exact
+// even for history read long after a switch of login; whoever is signed in
+// now is only the fallback.
+func TestCoworkCreditsTheAccountItsSessionIsFiledUnder(t *testing.T) {
+	const owner = "0a1b2c3d-0000-4000-8000-00000000abcd"
+	home := t.TempDir()
+	dir := filepath.Join(home, "Library/Application Support/Claude/local-agent-mode-sessions",
+		owner, "0a1b2c3d-0000-4000-8000-0000000000aa", "0a1b2c3d-0000-4000-8000-0000000000bb")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"type":"assistant","request_id":"req_1","session_id":"s1","timestamp":"2026-09-22T10:00:00Z",` +
+		`"message":{"id":"msg_1","model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":20}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	c := &Ctx{Store: st, MachineID: "m", Home: home, Accounts: map[string]*schema.Account{
+		"anthropic": {Ref: "anthropic:someone-signed-in-today", Provider: "anthropic"},
+	}}
+	if _, err := (Cowork{}).Collect(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+
+	evs := storedEvents(t, st)
+	if len(evs) != 1 || evs[0].AccountRef != "anthropic:"+owner ||
+		evs[0].Surface != schema.SurfaceDesktop || evs[0].CostBasis != schema.CostRateCard {
+		t.Fatalf("events %+v, want one desktop event credited to %s at rate card", evs, owner)
 	}
 }

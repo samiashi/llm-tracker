@@ -105,3 +105,37 @@ func TestCrossingTenReReadsWhatItCorrected(t *testing.T) {
 		t.Errorf("SourcesNeedingDedupe(9) = %v, want continue: version 10 re-keys it", got)
 	}
 }
+
+// Invariant 9: a bump alone changes only conflict resolution. A version that
+// names nothing to re-read leaves every stored row on the old reading.
+func TestEveryCollectorVersionReReadsSomething(t *testing.T) {
+	for v := 2; v <= CollectorVersion; v++ {
+		if len(backfillOnUpgrade[v]) == 0 {
+			t.Errorf("collector %d re-reads nothing: history keeps the reading it corrected", v)
+		}
+	}
+}
+
+// Dedupe deletes an old row only once its replacement is stored, and only a
+// re-read stores one: deduped without it, a re-key never reaches history.
+func TestEverySourceDedupedOnUpgradeIsReRead(t *testing.T) {
+	for v, srcs := range dedupeOnUpgrade {
+		for _, s := range srcs {
+			if !slices.Contains(backfillOnUpgrade[v], s) {
+				t.Errorf("collector %d dedupes %s without re-reading it", v, s)
+			}
+		}
+	}
+}
+
+// Version 9 corrected four parsers (see CollectorVersion); a source dropped
+// from its re-read keeps its pre-9 history as it was read.
+func TestCrossingNineReReadsEverySourceItCorrected(t *testing.T) {
+	got := SourcesNeedingBackfill(8)
+	for _, s := range []schema.Source{schema.SourceCodex, schema.SourceContinue,
+		schema.SourceClaudeCode, schema.SourceCowork} {
+		if !slices.Contains(got, s) {
+			t.Errorf("SourcesNeedingBackfill(8) = %v, missing %s", got, s)
+		}
+	}
+}

@@ -356,3 +356,20 @@ func TestALocalRuntimeIsFreeNotBilledAtACloudRate(t *testing.T) {
 			cloud.Input, cloud.Output, ok, own.Input, own.Output)
 	}
 }
+
+// The local-runtime zero exists for exactly this case: a model served on the
+// laptop under a name the table prices for its maker's cloud. Checked after
+// the bare model, the runtime would never be reached for such a name, and
+// TestALocalRuntimeIsFreeNotBilledAtACloudRate uses unpriced names only.
+func TestALocalModelNamedLikeACloudOneIsStillFree(t *testing.T) {
+	pt := DefaultPriceTable()
+	for _, model := range []string{"deepseek-r1", "glm-5.1", "kimi-k3"} {
+		if _, ok := pt.Lookup("", model); !ok {
+			t.Fatalf("setup: %s is not priced for its maker's cloud", model)
+		}
+		e := &Event{Endpoint: "ollama", Model: model, Usage: Usage{InputTokens: 1_000_000}}
+		if usd, priced := pt.Cost(e); !priced || usd != 0 {
+			t.Errorf("ollama|%s = $%.2f (priced=%v), want $0: it ran on the laptop", model, usd, priced)
+		}
+	}
+}
