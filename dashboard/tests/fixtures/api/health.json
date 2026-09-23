@@ -1,0 +1,10 @@
+{
+  "sources": [
+    {
+      "events": 1,
+      "last_event": 1781000000,
+      "machine_id": "m",
+      "source": "claude_code"
+    }
+  ]
+}

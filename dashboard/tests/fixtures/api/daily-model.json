@@ -1,0 +1,9 @@
+{
+  "points": [
+    {
+      "day": "2026-06-15",
+      "model": "claude-opus-5",
+      "tokens": 1000
+    }
+  ]
+}

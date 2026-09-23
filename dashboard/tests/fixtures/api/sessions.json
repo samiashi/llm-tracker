@@ -1,0 +1,17 @@
+{
+  "sessions": [
+    {
+      "billed_usd": 0,
+      "effort": "high",
+      "email": "dev@example.com",
+      "events": 1,
+      "last_seen": 1781000000,
+      "model": "claude-opus-5",
+      "rate_card_usd": 0.005,
+      "session_id": "session-1",
+      "source": "claude_code",
+      "tokens": 1000,
+      "unknown_basis_usd": 0
+    }
+  ]
+}

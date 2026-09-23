@@ -1,0 +1,15 @@
+{
+  "agents": [
+    {
+      "agent_version": "v1.4.0",
+      "events": 1,
+      "first_seen": 1781000000,
+      "hostname": "host",
+      "last_sync": 1781000000,
+      "machine_id": "m",
+      "person": "dev@example.com"
+    }
+  ],
+  "now": 1781000000,
+  "server_version": "v1.4.0"
+}
