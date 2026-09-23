@@ -39,20 +39,8 @@ func cmdStatus(dataDir string) error {
 	// not the plist (see launchd.Running).
 	fmt.Println()
 	running, program, lerr := launchd.Running()
-	switch {
-	case lerr != nil:
-		fmt.Println("daemon:   not installed (run: llm-tracker-agent install)")
-	case !running:
-		fmt.Println("daemon:   installed but NOT running")
-		fmt.Println("          launchctl print gui/$(id -u)/" + launchd.Label + "  # for why")
-	default:
-		fmt.Println("daemon:   running")
-	}
-	if program != "" {
-		if _, serr := os.Stat(program); serr != nil {
-			fmt.Println("          WARNING: its binary is missing:", program)
-			fmt.Println("          launchd cannot start it. Re-run: llm-tracker-agent install")
-		}
+	for _, line := range daemonVerdict(dataDir, running, program, lerr) {
+		fmt.Println(line)
 	}
 
 	h, err := st.Health(ctx)
@@ -94,6 +82,30 @@ func cmdStatus(dataDir string) error {
 		fmt.Printf("         %d predate the server's retention window and will not be uploaded\n", refused)
 	}
 	return nil
+}
+
+// daemonVerdict is status's word on the collector, from what launchd reports,
+// with the command that fixes it for this data directory: a bare install
+// would start a collector on the default one instead.
+func daemonVerdict(dataDir string, running bool, program string, lerr error) []string {
+	install := agentCmd(dataDir, "install")
+	var out []string
+	switch {
+	case lerr != nil:
+		out = append(out, "daemon:   not installed (run: "+install+")")
+	case !running:
+		out = append(out, "daemon:   installed but NOT running",
+			"          launchctl print gui/$(id -u)/"+launchd.Label+"  # for why")
+	default:
+		out = append(out, "daemon:   running")
+	}
+	if program != "" {
+		if _, err := os.Stat(program); err != nil {
+			out = append(out, "          WARNING: its binary is missing: "+program,
+				"          launchd cannot start it. Re-run: "+install)
+		}
+	}
+	return out
 }
 
 // archiveBytes totals the store and its -wal and -shm files, since the -wal
