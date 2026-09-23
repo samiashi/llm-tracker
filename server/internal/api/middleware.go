@@ -20,6 +20,10 @@ func WithSecurityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "same-origin")
+		// Caddy terminates TLS and sends no HSTS, so without it a browser
+		// tries plain http first each time, which a network attacker can
+		// keep from ever upgrading. Browsers ignore it over plain http.
+		h.Set("Strict-Transport-Security", "max-age=31536000")
 		h.Set("Cache-Control", "no-store")
 		addVary(h, "Cookie")
 		// Everything is bundled and self-hosted, so no external origin is

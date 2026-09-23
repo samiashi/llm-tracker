@@ -88,6 +88,8 @@ func TestSecurityHeadersCoverWhateverTheyWrap(t *testing.T) {
 		"X-Frame-Options":        "DENY",
 		"Referrer-Policy":        "same-origin",
 		"Cache-Control":          "no-store",
+
+		"Strict-Transport-Security": "max-age=31536000",
 	} {
 		if got := rec.Result().Header.Get(k); got != want {
 			t.Errorf("%s = %q, want %q", k, got, want)

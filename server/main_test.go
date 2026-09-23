@@ -87,6 +87,8 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 			"X-Content-Type-Options": "nosniff",
 			"X-Frame-Options":        "DENY",
 			"Referrer-Policy":        "same-origin",
+
+			"Strict-Transport-Security": "max-age=31536000",
 		} {
 			if got := res.Header.Get(k); got != want {
 				t.Errorf("%s %s (%d): %s = %q, want %q", tc.method, tc.path, res.StatusCode, k, got, want)
