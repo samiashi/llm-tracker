@@ -53,10 +53,10 @@ type Authenticator struct {
 	signIns Limiter
 }
 
-// MinSessionKeyLen is the shortest key accepted. Anything weaker is
+// minSessionKeyLen is the shortest key accepted. Anything weaker is
 // brute-forceable offline from a single captured cookie, after which every
 // future session can be forged.
-const MinSessionKeyLen = 32
+const minSessionKeyLen = 32
 
 // New builds an authenticator, refusing an incomplete configuration or a
 // weak session key rather than running with either.
@@ -64,9 +64,9 @@ func New(cfg Config) (*Authenticator, error) {
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.Org == "" || cfg.BaseURL == "" {
 		return nil, errors.New("GitHub auth needs an OAuth app's client ID and secret, the org, and the base URL")
 	}
-	if len(cfg.SessionKey) < MinSessionKeyLen {
+	if len(cfg.SessionKey) < minSessionKeyLen {
 		return nil, fmt.Errorf("the session key must be at least %d bytes, got %d",
-			MinSessionKeyLen, len(cfg.SessionKey))
+			minSessionKeyLen, len(cfg.SessionKey))
 	}
 	return &Authenticator{
 		cfg:    cfg,
@@ -78,7 +78,6 @@ func New(cfg Config) (*Authenticator, error) {
 // User is who the session belongs to.
 type User struct {
 	Login string `json:"login"`
-	Name  string `json:"name,omitempty"`
 }
 
 // exempt is every route reachable without a session: the OAuth flow, the
@@ -148,7 +147,7 @@ func (a *Authenticator) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	q := url.Values{
 		"client_id":    {a.cfg.ClientID},
-		"redirect_uri": {strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/callback"},
+		"redirect_uri": {a.callbackURL()},
 		// read:org is needed to check membership of a private organisation.
 		"scope": {"read:org"},
 		"state": {state},
@@ -244,12 +243,18 @@ func (a *Authenticator) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+// callbackURL is where GitHub sends the browser back to. The token exchange
+// must name the one the login did, or GitHub refuses it.
+func (a *Authenticator) callbackURL() string {
+	return strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/callback"
+}
+
 func (a *Authenticator) exchange(ctx context.Context, code string) (string, error) {
 	form := url.Values{
 		"client_id":     {a.cfg.ClientID},
 		"client_secret": {a.cfg.ClientSecret},
 		"code":          {code},
-		"redirect_uri":  {strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/callback"},
+		"redirect_uri":  {a.callbackURL()},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		"https://github.com/login/oauth/access_token", strings.NewReader(form.Encode()))
@@ -359,24 +364,17 @@ func (a *Authenticator) get(ctx context.Context, token, url string, out any) err
 // setSession issues an HMAC-signed cookie. The payload is not secret -- it is
 // a login name and an expiry -- but it must not be forgeable.
 func (a *Authenticator) setSession(w http.ResponseWriter, u User) {
-	// JSON rather than a delimited string: a GitHub display name may contain
-	// any delimiter, and a cookie that never validates is a silent, endless
-	// login loop.
-	body, err := json.Marshal(sessionPayload{
-		Login: u.Login, Name: u.Name,
-		Expires: time.Now().Add(sessionTTL).Unix(),
-	})
+	exp := time.Now().Add(sessionTTL)
+	body, err := json.Marshal(sessionPayload{Login: u.Login, Expires: exp.Unix()})
 	if err != nil {
 		return
 	}
-	exp := time.Now().Add(sessionTTL).Unix()
-	payload := string(body)
-	value := base64.RawURLEncoding.EncodeToString(body) + "." + a.sign(payload)
+	value := base64.RawURLEncoding.EncodeToString(body) + "." + a.sign(string(body))
 
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: value, Path: "/",
 		HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteLaxMode,
-		Expires: time.Unix(exp, 0),
+		Expires: exp,
 	})
 }
 
@@ -403,13 +401,12 @@ func (a *Authenticator) session(r *http.Request) (User, bool) {
 	if p.Login == "" || time.Now().Unix() > p.Expires {
 		return User{}, false
 	}
-	return User{Login: p.Login, Name: p.Name}, true
+	return User{Login: p.Login}, true
 }
 
 // sessionPayload is the signed cookie body.
 type sessionPayload struct {
 	Login   string `json:"l"`
-	Name    string `json:"n,omitempty"`
 	Expires int64  `json:"e"`
 }
 

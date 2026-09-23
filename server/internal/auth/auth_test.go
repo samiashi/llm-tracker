@@ -194,7 +194,7 @@ func TestNewRefusesAnIncompleteConfig(t *testing.T) {
 func TestSessionRoundTripsAndRejectsTampering(t *testing.T) {
 	a := testAuth(t)
 	rec := httptest.NewRecorder()
-	a.setSession(rec, User{Login: "sam", Name: "Sam"})
+	a.setSession(rec, User{Login: "sam"})
 
 	set := rec.Result().Cookies()
 	if len(set) == 0 {
@@ -262,6 +262,79 @@ func TestExpiredSessionIsRefusedDespiteAValidSignature(t *testing.T) {
 	}
 }
 
+// Sessions issued while the payload carried the display name ("n") are still
+// signed by the same key, and must keep working until they expire.
+func TestASessionIssuedWithADisplayNameStillValidates(t *testing.T) {
+	a := testAuth(t)
+	body := fmt.Sprintf(`{"l":"sam","n":"Sam | Example","e":%d}`, time.Now().Add(time.Hour).Unix())
+	req := httptest.NewRequest("GET", "/", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookie,
+		Value: base64.RawURLEncoding.EncodeToString([]byte(body)) + "." + a.sign(body)})
+	if u, ok := a.session(req); !ok || u.Login != "sam" {
+		t.Fatalf("session = %+v, %v; want sam's", u, ok)
+	}
+}
+
+// The dashboard's own gate: GitHub vouches for the login, the org check
+// admits only members, and the way back after it lands on this host only.
+func TestCallbackSignsInOnlyMembersAndOnlyToALocalPath(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		membership  int
+		next        string
+		wantCode    int
+		wantTo      string
+		wantSession bool
+	}{
+		{"a member", http.StatusNoContent, "/agents", http.StatusFound, "/agents", true},
+		{"a member sent off-site", http.StatusNoContent, "//evil.example", http.StatusFound, "/", true},
+		{"not a member", http.StatusNotFound, "/", http.StatusForbidden, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := testAuth(t)
+			a.client = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				code, body := http.StatusInternalServerError, ""
+				switch r.URL.Host + r.URL.Path {
+				case "github.com/login/oauth/access_token":
+					code, body = http.StatusOK, `{"access_token":"gho_alice"}`
+				case "api.github.com/user":
+					code, body = http.StatusOK, `{"login":"alice"}`
+				case "api.github.com/orgs/your-org/members/alice":
+					code = tc.membership
+				default:
+					t.Errorf("unexpected request to %s", r.URL)
+				}
+				return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader(body)),
+					Header: http.Header{}, Request: r}, nil
+			})}
+			req := httptest.NewRequest("GET", "/auth/callback?code=c&state=s", nil)
+			req.AddCookie(&http.Cookie{Name: stateCookie, Value: "s|" + tc.next})
+			rec := httptest.NewRecorder()
+			a.handleCallback(rec, req)
+
+			var session *http.Cookie
+			for _, c := range rec.Result().Cookies() {
+				if c.Name == sessionCookie && c.Value != "" {
+					session = c
+				}
+			}
+			if rec.Code != tc.wantCode || (session != nil) != tc.wantSession ||
+				(tc.wantTo != "" && rec.Header().Get("Location") != tc.wantTo) {
+				t.Fatalf("status %d, session %v, Location %q; want %d, %v, %q",
+					rec.Code, session != nil, rec.Header().Get("Location"),
+					tc.wantCode, tc.wantSession, tc.wantTo)
+			}
+			if session != nil {
+				req := httptest.NewRequest("GET", "/", nil)
+				req.AddCookie(session)
+				if u, ok := a.session(req); !ok || u.Login != "alice" {
+					t.Fatalf("the session set is %+v, %v; want alice's", u, ok)
+				}
+			}
+		})
+	}
+}
+
 // A short key is a silent downgrade of every session signature, so New must
 // refuse it rather than pad it.
 func TestNewRefusesAShortSessionKey(t *testing.T) {
@@ -270,7 +343,7 @@ func TestNewRefusesAShortSessionKey(t *testing.T) {
 		BaseURL: "https://x", SessionKey: []byte("tooshort"),
 	})
 	if err == nil {
-		t.Fatal("New accepted a session key shorter than MinSessionKeyLen")
+		t.Fatal("New accepted a session key shorter than minSessionKeyLen")
 	}
 }
 
