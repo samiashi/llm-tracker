@@ -1,0 +1,83 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # Opt in deliberately rather than inheriting a default set, so adding a
+  # linter is a decision someone made rather than something that arrived with
+  # an upgrade and broke CI.
+  default: none
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # suspicious constructs
+    - staticcheck   # correctness, simplification, style
+    - ineffassign   # assignments never used
+    - unused        # dead code
+    - bodyclose     # unclosed HTTP response bodies
+    - rowserrcheck  # unchecked sql.Rows.Err
+    - sqlclosecheck # unclosed sql.Rows / Stmt
+    - errorlint     # error wrapping and comparison mistakes
+    - nilerr        # returning nil after a non-nil error
+    - misspell
+    - copyloopvar
+    - gocritic
+    - gosec
+    - noctx
+    - contextcheck
+
+  settings:
+    errcheck:
+      # Also flag a single-value type assertion, which panics on a mismatch.
+      check-type-assertions: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+    staticcheck:
+      checks:
+        - all
+
+  exclusions:
+    rules:
+      # Tests read more clearly with unchecked setup calls.
+      - path: _test\.go
+        linters: [errcheck]
+      # A deferred Close or Rollback has nowhere to report an error to, and
+      # Rollback after a successful Commit always returns one. Checking these
+      # is noise that trains people to ignore the linter.
+      - linters: [errcheck]
+        source: "^\\s*defer .*\\.(Close|Rollback)\\(\\)$"
+
+      # gosec is enabled for the rules that can actually catch something here
+      # -- file permissions, weak crypto, hardcoded credentials. These four
+      # cannot, and left on they bury the ones that can.
+      #
+      # G304: no path opened comes from a request: each is derived from the
+      # user's home, the agent's own executable, or the operator's config.
+      # G204: no shell is invoked, and every exec argv is built from constants,
+      # os.Getuid() and paths the agent derives itself.
+      # G201/G202: the only values formatted into SQL are a package constant
+      # table name and dimensions resolved through an allow-list; every value
+      # from a request is bound.
+      # G124: Secure is set from config rather than a literal, which the rule
+      # reads as absent. The cookies carry it whenever the base URL is https.
+      - linters: [gosec]
+        text: "(G304|G204|G201|G202|G124)"
+
+      # Tests are the wrong place for these. httptest.NewRequest has no
+      # context to inherit, and an unchecked error in a fixture is noise.
+      - path: _test\.go
+        linters: [noctx, gosec]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/samiashi/llm-tracker
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
