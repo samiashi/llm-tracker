@@ -405,7 +405,8 @@ fixed order and never cycled, and no chart uses two y-axes.
 - Ingest bounds the body at 16 MiB before and after gzip and every list in a
   batch near what an agent sends, decodes at most four batches at once (a fifth
   gets 503), clips every string, and rejects an event whose counters,
-  timestamp or native cost are implausible. A list added to `schema.Batch`
+  timestamp or native cost are implausible, or a Continue event not keyed on
+  the uploading machine. A list added to `schema.Batch`
   must be shadowed in `ingestBody`, with a limit in `listLimit`; a test fails
   until it is.
 - Enrolment and sign-in, the two routes that spend a GitHub call before

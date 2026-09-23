@@ -172,7 +172,7 @@ type ingestBody struct {
 func (in *ingestBody) batch() (schema.Batch, int) {
 	b := in.Batch
 	var rejected int
-	b.Events, rejected = sanitise(in.Events)
+	b.Events, rejected = sanitise(in.Events, b.MachineID)
 	b.UnknownSource = in.UnknownSource
 	b.Accounts = in.Accounts
 	clipStrings(reflect.ValueOf(&b).Elem())
@@ -182,7 +182,7 @@ func (in *ingestBody) batch() (schema.Batch, int) {
 // sanitise drops events that cannot be true. The realistic source is a
 // colleague's adapter misreading a format, and one bad row makes every total
 // above it wrong, untraceably.
-func sanitise(events []schema.Event) (kept []schema.Event, rejected int) {
+func sanitise(events []schema.Event, machine string) (kept []schema.Event, rejected int) {
 	kept = make([]schema.Event, 0, len(events))
 	// A far-future timestamp sits above every window, and "last seen"
 	// arithmetic reads its negative age as healthy.
@@ -192,13 +192,25 @@ func sanitise(events []schema.Event) (kept []schema.Event, rejected int) {
 		switch {
 		case !plausible(e.Usage),
 			!e.TS.IsZero() && (e.TS.Before(floor) || e.TS.After(ceil)),
-			e.NativeCostUSD != nil && (*e.NativeCostUSD < 0 || *e.NativeCostUSD > maxNativeCostUSD):
+			e.NativeCostUSD != nil && (*e.NativeCostUSD < 0 || *e.NativeCostUSD > maxNativeCostUSD),
+			foreignKey(e, machine):
 			rejected++
 		default:
 			kept = append(kept, e)
 		}
 	}
 	return kept, rejected
+}
+
+// foreignKey is true for a Continue event that is not keyed on the uploading
+// machine. Since collector 10 its key starts with its machine's id, which the
+// dashboard shows, and its id derives from that key; a row moves only for the
+// machine that stored it, so a colleague's key stored first from here would
+// keep their own readings out.
+func foreignKey(e schema.Event, machine string) bool {
+	return e.Source == schema.SourceContinue && e.Collector >= 10 &&
+		(!strings.HasPrefix(e.NativeID, machine+":") ||
+			e.ID != schema.MakeID(e.Source, e.NativeID))
 }
 
 // plausible bounds every counter before any is summed: out-of-range counts

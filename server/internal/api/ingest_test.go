@@ -220,7 +220,7 @@ func TestIngestDropsImplausibleEventsAndKeepsTheRest(t *testing.T) {
 		}()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			kept, rejected := sanitise([]schema.Event{good, tc.bad})
+			kept, rejected := sanitise([]schema.Event{good, tc.bad}, "m")
 			if rejected != 1 {
 				t.Fatalf("rejected = %d, want 1", rejected)
 			}
@@ -235,9 +235,38 @@ func TestIngestDropsImplausibleEventsAndKeepsTheRest(t *testing.T) {
 func TestSanitiseKeepsAZeroTimestamp(t *testing.T) {
 	e := event("z", "claude-opus-5", "anthropic:a", 10)
 	e.TS = time.Time{}
-	kept, rejected := sanitise([]schema.Event{e})
+	kept, rejected := sanitise([]schema.Event{e}, "m")
 	if rejected != 0 || len(kept) != 1 {
 		t.Fatalf("a zero timestamp was rejected: kept=%d rejected=%d", len(kept), rejected)
+	}
+}
+
+// A row moves only for the machine that stored it, so a Continue key naming
+// another machine, or an id its key does not derive, stored first from here
+// would keep that colleague's own readings out.
+func TestAContinueKeyMustBeTheUploadersOwn(t *testing.T) {
+	keyed := func(native, idFrom string, collector int) schema.Event {
+		e := event(schema.MakeID(schema.SourceContinue, idFrom), "gpt-5", "", 10)
+		e.Source, e.NativeID, e.Collector = schema.SourceContinue, native, collector
+		return e
+	}
+	const own, alices = "m:0.2.0/tokensGenerated.jsonl#0", "alice:0.2.0/tokensGenerated.jsonl#0"
+	for _, tc := range []struct {
+		name string
+		e    schema.Event
+		want int // rejected
+	}{
+		{"keyed on the uploading machine", keyed(own, own, 10), 0},
+		{"keyed on another machine", keyed(alices, alices, 10), 1},
+		{"an id its key does not derive", keyed(own, alices, 10), 1},
+		{"an older collector's key, which names no machine",
+			keyed("0.2.0/tokensGenerated.jsonl#0", "0.2.0/tokensGenerated.jsonl#0", 9), 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, rejected := sanitise([]schema.Event{tc.e}, "m"); rejected != tc.want {
+				t.Fatalf("rejected = %d, want %d", rejected, tc.want)
+			}
+		})
 	}
 }
 
@@ -251,7 +280,7 @@ func TestEveryCounterIsBoundedBeforeItIsSummed(t *testing.T) {
 		}{{-1, 1}, {maxTokens, 0}, {maxTokens + 1, 1}, {math.MaxInt64, 1}} {
 			e := event("x", "claude-opus-5", "anthropic:a", 0)
 			reflect.ValueOf(&e.Usage).Elem().Field(i).SetInt(tc.v)
-			if _, rejected := sanitise([]schema.Event{e}); rejected != tc.want {
+			if _, rejected := sanitise([]schema.Event{e}, "m"); rejected != tc.want {
 				t.Errorf("%s = %d: rejected = %d, want %d", ut.Field(i).Name, tc.v, rejected, tc.want)
 			}
 		}
@@ -259,7 +288,7 @@ func TestEveryCounterIsBoundedBeforeItIsSummed(t *testing.T) {
 
 	e := event("wraps", "claude-opus-5", "anthropic:a", 0)
 	e.Usage.InputTokens, e.Usage.OutputTokens = 1<<62, 1<<62
-	if _, rejected := sanitise([]schema.Event{e}); rejected != 1 {
+	if _, rejected := sanitise([]schema.Event{e}, "m"); rejected != 1 {
 		t.Errorf("input and output of 2^62 were accepted; their total is %d", e.Usage.TotalTokens())
 	}
 }
