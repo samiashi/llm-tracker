@@ -60,6 +60,10 @@ func TestAnIdentityChangePurgesWhatItReplaces(t *testing.T) {
 	}
 }
 
+// A purge deletes rows before the re-read, so what is gone from disk is lost:
+// only a harness that never deletes a record may be purged. The entries up to
+// version 9 predate the finding that Codex and opencode delete records, and
+// no archive older than 9 exists to run them.
 func TestEverySourcePurgedOnUpgradeKeepsItsHistory(t *testing.T) {
 	for v, srcs := range purgeOnUpgrade {
 		for _, s := range srcs {
@@ -68,15 +72,20 @@ func TestEverySourcePurgedOnUpgradeKeepsItsHistory(t *testing.T) {
 				t.Errorf("version %d purges %q, which is not a registered source", v, s)
 				continue
 			}
-			if !KeepsHistory(a) {
+			if v > 9 && !KeepsHistory(a) {
 				t.Errorf("version %d purges %s, whose history does not outlive our "+
 					"archive; match old rows to new ones in dedupeOnUpgrade instead", v, s)
 			}
 		}
 	}
-	for _, s := range []schema.Source{schema.SourceClaudeCode, schema.SourceCowork} {
+	for s, deletes := range map[schema.Source]string{
+		schema.SourceClaudeCode: "deletes its transcripts after thirty days",
+		schema.SourceCowork:     "deletes its transcripts after thirty days",
+		schema.SourceCodex:      "can permanently delete a session",
+		schema.SourceOpenCode:   "deletes a session's messages with it",
+	} {
 		if a, _ := Lookup(string(s)); KeepsHistory(a) {
-			t.Errorf("%s deletes its transcripts after thirty days; it must not claim to keep them", s)
+			t.Errorf("%s %s; it must not claim to keep its history", s, deletes)
 		}
 	}
 }

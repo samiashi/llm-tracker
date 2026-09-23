@@ -19,14 +19,14 @@ func init() { Register(OpenCode{}) }
 // in; the JSON tree beside it is a legacy layout it no longer writes. Like
 // Cline, opencode computes its own cost, which the server prefers over the
 // price table.
+//
+// Its history does not outlive our archive (no KeepsHistory): deleting a
+// session deletes its messages with it (message.session_id is ON DELETE
+// CASCADE), and a message can be removed on its own.
 type OpenCode struct{}
 
 func (OpenCode) Name() schema.Source { return schema.SourceOpenCode }
 func (OpenCode) Roots() []string     { return []string{".local/share/opencode"} }
-
-// KeepsHistory is true: opencode.db keeps every message it wrote, and nothing
-// expires them.
-func (OpenCode) KeepsHistory() bool { return true }
 
 func (OpenCode) dbPath(c *Ctx) string {
 	return filepath.Join(c.Home, ".local", "share", "opencode", "opencode.db")

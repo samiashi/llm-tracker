@@ -105,6 +105,11 @@ type fileCtx struct {
 
 func init() { Register(Codex{}) }
 
+// Codex reads Codex CLI and desktop rollouts.
+//
+// Its history does not outlive our archive (no KeepsHistory): Codex can
+// permanently delete a session and its rollout (0.156's thread store has a
+// delete_thread), and what is gone from disk cannot be re-read.
 type Codex struct{}
 
 func (Codex) Name() schema.Source { return schema.SourceCodex }
@@ -113,10 +118,6 @@ func (Codex) Name() schema.Source { return schema.SourceCodex }
 // parent's token_count lines stamped at fork time, and the copy stored first
 // keeps its date, so an archived parent must be read before its live fork.
 func (Codex) Roots() []string { return []string{".codex/archived_sessions", ".codex/sessions"} }
-
-// KeepsHistory is true: Codex does not expire rollouts, and archiving one
-// moves it to archived_sessions, which is read too.
-func (Codex) KeepsHistory() bool { return true }
 
 // MetaPrefixes names the per-file context key, which predates the
 // "<source>:" convention and cannot be renamed without stranding what

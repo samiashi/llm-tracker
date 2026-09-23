@@ -293,17 +293,17 @@ func TestCommandsDefaultToTheInstalledCollectorsDataDir(t *testing.T) {
 }
 
 // resync deletes before it re-reads, so it warns for every harness that can
-// lose records -- not only Claude Code: Cline tasks and Continue logs can be
-// deleted by the user -- and stays quiet for one that keeps its history.
+// lose records -- not only Claude Code: Codex and opencode sessions, Cline
+// tasks and Continue logs can all be deleted by the user.
 func TestResyncWarnsForEveryHarnessThatCanLoseRecords(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	for source, warns := range map[string]bool{"cline": true, "claude_code": true, "codex": false} {
+	for _, source := range []string{"claude_code", "cowork", "codex", "opencode", "cline", "continue"} {
 		out, err := agentRun(t, "resync", "-data", t.TempDir(), "-source", source, "-yes")
 		if err != nil {
 			t.Fatalf("resync %s: %v", source, err)
 		}
-		if got := strings.Contains(out, "does not keep every record"); got != warns {
-			t.Errorf("resync %s warned = %v, want %v:\n%s", source, got, warns, out)
+		if !strings.Contains(out, "does not keep every record") {
+			t.Errorf("resync %s gave no warning that deleted records cannot be re-read:\n%s", source, out)
 		}
 	}
 }

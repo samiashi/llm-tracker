@@ -148,8 +148,10 @@ cursor.
 Three more declarations matter downstream:
 
 - **`KeepsHistory()`** — implement it, returning true, only for a harness that
-  never drops a record it wrote (Codex, opencode). It is what permits a purge
-  on upgrade (invariant 9), and assuming it wrongly is permanent.
+  never drops a record it wrote. None does today: Codex and opencode both
+  delete a session with its records, and Claude Code and Cowork expire
+  transcripts. It is what permits a purge on upgrade (invariant 9), and
+  assuming it wrongly is permanent.
 - **`Event.coversOneRequest`** in `schema/pricing.go` — add the source if its
   events are session or turn totals, as Gemini's, Kimi's and Copilot's are, or
   long-context tiers are applied to sums no single request reached.

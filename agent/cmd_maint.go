@@ -198,7 +198,8 @@ func cmdResync(dataDir, home, source string, yes bool) error {
 	if !sources.KeepsHistory(ad) {
 		fmt.Println()
 		fmt.Println("  This harness does not keep every record: Claude Code and Cowork delete")
-		fmt.Println("  transcripts after 30 days, and others let you delete tasks or logs.")
+		fmt.Println("  transcripts after 30 days, and others let you delete sessions, tasks")
+		fmt.Println("  or logs.")
 		fmt.Println("  Anything no longer on disk exists only in this archive and CANNOT be")
 		fmt.Println("  re-read. It will be lost, not rebuilt.")
 		fmt.Println()

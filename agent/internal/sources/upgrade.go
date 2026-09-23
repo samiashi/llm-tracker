@@ -56,6 +56,10 @@ var backfillOnUpgrade = map[int][]schema.Source{
 // Destructive, so only for a source that keeps its own history (KeepsHistory,
 // enforced by a test). Where a match is possible, dedupeOnUpgrade is used
 // instead. The server removes the same rows in its migrations.
+//
+// The entries below predate the finding that Codex and opencode delete
+// records. They run only for an archive older than collector 9, and there is
+// none: every archive starts at 9 or later.
 var purgeOnUpgrade = map[int][]schema.Source{
 	5: {schema.SourceCodex},    // off the absolute path
 	7: {schema.SourceOpenCode}, // one event per response, not per session
