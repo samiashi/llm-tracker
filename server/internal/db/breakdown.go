@@ -57,25 +57,28 @@ func (d *DB) breakdown(ctx context.Context, w Window, dimension, joinSQL, labelE
 	return out, rows.Err()
 }
 
-// ByPerson groups by email rather than by account: one person holds several
-// accounts, and grouped by account_ref they would appear once per login with
-// their usage split across the rows.
-func (d *DB) ByPerson(ctx context.Context, w Window) ([]Group, error) {
-	return d.breakdown(ctx, w,
-		"COALESCE(NULLIF(account.email,''), event.account_ref)",
-		"LEFT JOIN account ON account.ref = event.account_ref", "")
+// breakdownDims is Breakdown's allow-list: the SQL for each dimension a
+// request may name, so the query string never reaches the database.
+var breakdownDims = map[string]struct{ expr, join, label string }{
+	// By email rather than by account: one person holds several accounts, and
+	// grouped by account_ref they would appear once per login with their usage
+	// split across the rows.
+	"person": {"COALESCE(NULLIF(account.email,''), event.account_ref)",
+		"LEFT JOIN account ON account.ref = event.account_ref", ""},
+	"model":   {"event.model", "", "event.provider"},
+	"source":  {"event.source", "", "event.surface"},
+	"surface": {"event.surface", "", ""},
+	// Main-thread work apart from subagent fan-out.
+	"origin": {"CASE WHEN event.is_subagent THEN 'subagent' ELSE 'main thread' END", "", ""},
 }
 
-func (d *DB) ByModel(ctx context.Context, w Window) ([]Group, error) {
-	return d.breakdown(ctx, w, "event.model", "", "event.provider")
-}
-
-func (d *DB) BySource(ctx context.Context, w Window) ([]Group, error) {
-	return d.breakdown(ctx, w, "event.source", "", "event.surface")
-}
-
-func (d *DB) BySurface(ctx context.Context, w Window) ([]Group, error) {
-	return d.breakdown(ctx, w, "event.surface", "", "")
+// Breakdown groups a window by one allow-listed dimension, largest first.
+func (d *DB) Breakdown(ctx context.Context, w Window, by string) ([]Group, error) {
+	dim, ok := breakdownDims[by]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownDimension, by)
+	}
+	return d.breakdown(ctx, w, dim.expr, dim.join, dim.label)
 }
 
 // There is no breakdown by project or branch. Both are high-cardinality and
@@ -143,12 +146,6 @@ func (d *DB) DailyByModel(ctx context.Context, w Window, top int) ([]ModelDay, e
 		out = append(out, m)
 	}
 	return out, rows.Err()
-}
-
-// ByOrigin splits main-thread work from subagent fan-out.
-func (d *DB) ByOrigin(ctx context.Context, w Window) ([]Group, error) {
-	return d.breakdown(ctx, w,
-		"CASE WHEN event.is_subagent THEN 'subagent' ELSE 'main thread' END", "", "")
 }
 
 // ExportRow is one row of the CSV download: a day's totals per dimension.

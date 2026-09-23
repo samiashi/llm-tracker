@@ -132,7 +132,7 @@ func TestUnattributedEventGetsMachineAccount(t *testing.T) {
 	e.AccountRef = ""
 	ingest(t, d, e)
 
-	groups, err := d.ByPerson(context.Background(), Window{From: "2000-01-01"})
+	groups, err := d.Breakdown(context.Background(), Window{From: "2000-01-01"}, "person")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestAccountsMergeIntoOnePerson(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	people, _ := d.ByPerson(ctx, Window{From: "2000-01-01"})
+	people, _ := d.Breakdown(ctx, Window{From: "2000-01-01"}, "person")
 	if len(people) != 1 {
 		t.Fatalf("got %d people, want 1 -- two accounts, one colleague", len(people))
 	}
@@ -219,16 +219,13 @@ func TestEveryBreakdownDimensionRuns(t *testing.T) {
 	ingest(t, d, ev("a", 100, schema.CostBilled))
 	w := Window{From: "2000-01-01", To: "2099-01-01"}
 
-	for name, fn := range map[string]func(context.Context, Window) ([]Group, error){
-		"person":  d.ByPerson,
-		"model":   d.ByModel,
-		"source":  d.BySource,
-		"surface": d.BySurface,
-		"origin":  d.ByOrigin,
-	} {
-		if _, err := fn(ctx, w); err != nil {
+	for name := range breakdownDims {
+		if _, err := d.Breakdown(ctx, w, name); err != nil {
 			t.Errorf("breakdown %q failed: %v", name, err)
 		}
+	}
+	if _, err := d.Breakdown(ctx, w, "nonsense"); err == nil {
+		t.Error("an unknown dimension must be rejected, not interpolated into SQL")
 	}
 }
 

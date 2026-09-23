@@ -122,30 +122,19 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleBreakdown maps the requested dimension through a switch rather than
-// interpolating it into SQL, so the query string can never reach the database.
+// handleBreakdown passes the dimension to db.Breakdown, whose allow-list keeps
+// the query string out of the SQL.
 func (s *Server) handleBreakdown(w http.ResponseWriter, r *http.Request) {
-	ctx, win := r.Context(), window(r)
-	var (
-		groups []db.Group
-		err    error
-	)
-	switch r.URL.Query().Get("by") {
-	case "person", "":
-		groups, err = s.DB.ByPerson(ctx, win)
-	case "origin":
-		groups, err = s.DB.ByOrigin(ctx, win)
-	case "model":
-		groups, err = s.DB.ByModel(ctx, win)
-	case "source":
-		groups, err = s.DB.BySource(ctx, win)
-	case "surface":
-		groups, err = s.DB.BySurface(ctx, win)
-	default:
-		writeErr(w, http.StatusBadRequest, errors.New("unknown 'by' dimension"))
-		return
+	by := r.URL.Query().Get("by")
+	if by == "" {
+		by = "person"
 	}
+	groups, err := s.DB.Breakdown(r.Context(), window(r), by)
 	if err != nil {
+		if errors.Is(err, db.ErrUnknownDimension) {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
 		s.writeInternal(w, "breakdown", err)
 		return
 	}
