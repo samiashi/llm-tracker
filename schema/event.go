@@ -254,9 +254,8 @@ type IngestAck struct {
 	// can retire what it cannot deliver and re-offer what it now can. Empty
 	// when nothing is refused.
 	RetentionFloor string `json:"retention_floor,omitempty"`
-	// RetentionEnforced is true exactly when RetentionFloor is set. Always
-	// present, so "refuses nothing" is distinguishable from an older server
-	// that does not report it.
+	// RetentionEnforced is true exactly when RetentionFloor is set; false
+	// tells an agent to offer again everything the server refused before.
 	RetentionEnforced bool `json:"retention_enforced"`
 }
 
@@ -276,8 +275,8 @@ type EnrollResponse struct {
 }
 
 // EnrolledTokenPrefix starts every token enrolment issues: ingest refuses
-// anything else without a lookup, and a re-run enroll knows a saved token for
-// one of its own.
+// anything else without a lookup, and enroll refuses a reply whose token lacks
+// it.
 const EnrolledTokenPrefix = "ctk_"
 
 // MakeID derives the stable idempotency key for an event.

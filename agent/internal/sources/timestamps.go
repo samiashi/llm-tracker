@@ -5,18 +5,11 @@ import (
 	"time"
 )
 
-// parseTS accepts the RFC3339 timestamps every harness here emits.
+// parseTS accepts the RFC3339 timestamps every harness here emits, with or
+// without fractional seconds, and returns the zero time for anything else.
 func parseTS(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t
-	}
-	return time.Time{}
+	t, _ := time.Parse(time.RFC3339, s)
+	return t
 }
 
 // fileMTime is the fallback timestamp for records a harness did not date.

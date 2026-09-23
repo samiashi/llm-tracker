@@ -44,8 +44,7 @@ func cmdEnroll(dataDir, server string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if cfg.ServerURL == base && strings.HasPrefix(cfg.Token, schema.EnrolledTokenPrefix) &&
-		tracker.New(base, cfg.Token, version, log).Check(ctx) == nil {
+	if cfg.ServerURL == base && tracker.New(base, cfg.Token, version, log).Check(ctx) == nil {
 		fmt.Println("already enrolled with", base)
 		return nil
 	}

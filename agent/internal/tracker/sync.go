@@ -135,7 +135,7 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 		// everything, else the refused rows at or above its current floor,
 		// which stay at sent = 2 otherwise.
 		requeued := int64(0)
-		if from, ok := ack.acceptsFrom(); ok {
+		if from, ok := acceptsFrom(ack); ok {
 			if requeued, err = st.Requeue(ctx, from); err != nil {
 				return stats, err
 			}
@@ -217,22 +217,11 @@ type wireBatch struct {
 	Events []json.RawMessage `json:"events,omitempty"`
 }
 
-// ack is the server's reply to one batch, as the agent reads it.
-type ack struct {
-	schema.IngestAck
-	// A pointer, so a server that never sends the field is not mistaken for
-	// one that keeps everything, which would re-queue every refused row on
-	// every push.
-	RetentionEnforced *bool `json:"retention_enforced"`
-}
-
-// acceptsFrom is the earliest instant the server takes events from, and false
-// when it has not said.
-func (a ack) acceptsFrom() (time.Time, bool) {
-	switch {
-	case a.RetentionEnforced == nil:
-		return time.Time{}, false
-	case !*a.RetentionEnforced:
+// acceptsFrom is the earliest instant the server takes events from: any, once
+// it keeps everything, else the start of its retention floor. false when the
+// floor it reports will not parse.
+func acceptsFrom(a schema.IngestAck) (time.Time, bool) {
+	if !a.RetentionEnforced {
 		return time.Time{}, true
 	}
 	return floorStart(a.RetentionFloor)
@@ -243,8 +232,8 @@ func (a ack) acceptsFrom() (time.Time, bool) {
 // The batch is marked sent on the strength of this reply, so anything that is
 // not unmistakably an acknowledgement of this batch is an error: the
 // dashboard's HTML and a login page both answer 200.
-func (c *Client) ingest(ctx context.Context, body wireBatch) (ack, error) {
-	var a ack
+func (c *Client) ingest(ctx context.Context, body wireBatch) (schema.IngestAck, error) {
+	var a schema.IngestAck
 	b, err := json.Marshal(body)
 	if err != nil {
 		return a, err
@@ -271,9 +260,7 @@ func (c *Client) ingest(ctx context.Context, body wireBatch) (ack, error) {
 	}
 	// No Accept-Encoding: set by hand, it stops the transport decompressing
 	// the reply, and a proxy's gzipped acknowledgement then fails to decode.
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

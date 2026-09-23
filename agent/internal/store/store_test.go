@@ -362,36 +362,6 @@ func TestResetClearsExactlyItsScope(t *testing.T) {
 	}
 }
 
-// The primary key already indexes those columns; the copy only doubles every
-// insert.
-func TestAnOlderStoreLosesTheDuplicateAccountWindowIndex(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "t.db")
-	s, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.db.ExecContext(context.Background(),
-		`CREATE INDEX IF NOT EXISTS idx_account_window ON account_window(provider, observed_at)`); err != nil {
-		t.Fatal(err)
-	}
-	s.Close()
-
-	s, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	var n int
-	if err := s.db.QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_account_window'`).
-		Scan(&n); err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Fatal("idx_account_window survived reopening")
-	}
-}
-
 // Nothing reads or sends plan-quota readings, so an older store's table of
 // them must not linger in the archive.
 func TestOpeningAnOlderStoreDropsItsQuotaTable(t *testing.T) {

@@ -17,10 +17,10 @@ import (
 
 const Label = "io.github.samiashi.llm-tracker"
 
-// PlistPath is the per-user agent location. A LaunchAgent rather than a
+// plistPath is the per-user agent location. A LaunchAgent rather than a
 // LaunchDaemon: this collects one person's usage and has no business running
 // as root or touching other accounts on the machine.
-func PlistPath() (string, error) {
+func plistPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -70,7 +70,7 @@ func xmlText(s string) string {
 // when there is no job or it names none. The plist is what Install wrote and
 // what launchd loads at login, so it is the collector's own record.
 func InstalledDataDir() string {
-	p, err := PlistPath()
+	p, err := plistPath()
 	if err != nil {
 		return ""
 	}
@@ -125,7 +125,7 @@ func dataDirIn(plist []byte) string {
 }
 
 func Install(binPath, dataDir string) (string, error) {
-	p, err := PlistPath()
+	p, err := plistPath()
 	if err != nil {
 		return "", err
 	}
@@ -207,7 +207,7 @@ const launchctl = "/bin/launchctl"
 func target() string { return "gui/" + uid() + "/" + Label }
 
 func Uninstall() (string, error) {
-	p, err := PlistPath()
+	p, err := plistPath()
 	if err != nil {
 		return "", err
 	}

@@ -27,7 +27,7 @@ func TestTheInstalledDataDirIsReadBackFromThePlist(t *testing.T) {
 	if got := InstalledDataDir(); got != "" {
 		t.Errorf("InstalledDataDir() = %q with nothing installed, want \"\"", got)
 	}
-	p, err := PlistPath()
+	p, err := plistPath()
 	if err != nil {
 		t.Fatal(err)
 	}

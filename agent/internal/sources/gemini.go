@@ -128,7 +128,7 @@ func (a Gemini) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			c.emit(schema.Event{
 				V: schema.Version, ID: schema.MakeID(schema.SourceGemini, nid), NativeID: nid,
 				Source: schema.SourceGemini, Surface: schema.SurfaceCLI,
-				TS:        pickTime(cmp.Or(s.LastTime, s.StartTime), 0),
+				TS:        parseTS(cmp.Or(s.LastTime, s.StartTime)),
 				MachineID: c.MachineID,
 				Provider:  "gemini", Model: model, Endpoint: "gemini",
 				Usage: usage, SessionID: nid, CostBasis: schema.CostRateCard,

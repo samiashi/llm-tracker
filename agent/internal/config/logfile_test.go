@@ -11,8 +11,8 @@ func TestLogRotatesAtTheCap(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "agent.log")
 
-	const max = 1024
-	lf, err := OpenLog(path, max)
+	const maxBytes = 1024
+	lf, err := OpenLog(path, maxBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,8 +29,8 @@ func TestLogRotatesAtTheCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Size() > max {
-		t.Errorf("current log is %d bytes, above the %d cap", fi.Size(), max)
+	if fi.Size() > maxBytes {
+		t.Errorf("current log is %d bytes, above the %d cap", fi.Size(), maxBytes)
 	}
 
 	// Exactly one previous generation is kept.
@@ -38,8 +38,8 @@ func TestLogRotatesAtTheCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("no rotated generation: %v", err)
 	}
-	if prev.Size() > max {
-		t.Errorf("rotated log is %d bytes, above the %d cap", prev.Size(), max)
+	if prev.Size() > maxBytes {
+		t.Errorf("rotated log is %d bytes, above the %d cap", prev.Size(), maxBytes)
 	}
 	if _, err := os.Stat(path + ".2"); err == nil {
 		t.Error("a second generation was kept; the budget is two files")
@@ -47,8 +47,8 @@ func TestLogRotatesAtTheCap(t *testing.T) {
 
 	// 10,000 bytes written against a 1KB cap must not be sitting on disk.
 	total := fi.Size() + prev.Size()
-	if total > 2*max {
-		t.Errorf("total on disk is %d bytes, want at most %d", total, 2*max)
+	if total > 2*maxBytes {
+		t.Errorf("total on disk is %d bytes, want at most %d", total, 2*maxBytes)
 	}
 }
 

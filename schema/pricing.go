@@ -51,7 +51,6 @@ type Tier struct {
 // tokens is an order-of-magnitude error.
 type PriceTable struct {
 	Version string          `json:"version"`
-	Source  string          `json:"source,omitempty"`
 	Rates   map[string]Rate `json:"rates"`
 }
 
@@ -87,7 +86,7 @@ func DefaultPriceTable() *PriceTable {
 		v.Tiers = slices.Clone(v.Tiers)
 		r[k] = v
 	}
-	return &PriceTable{Version: bundled.Version, Source: bundled.Source, Rates: r}
+	return &PriceTable{Version: bundled.Version, Rates: r}
 }
 
 // webSearchFee is the per-call price LiteLLM does not carry: Anthropic's $10

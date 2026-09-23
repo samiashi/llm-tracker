@@ -68,9 +68,6 @@ CREATE TABLE IF NOT EXISTS account_window (
   observed_at INTEGER NOT NULL,
   PRIMARY KEY (provider, observed_at)
 );
--- The primary key already indexes (provider, observed_at); a copy of it only
--- doubles every insert.
-DROP INDEX IF EXISTS idx_account_window;
 
 CREATE TABLE IF NOT EXISTS meta (
   k TEXT PRIMARY KEY,
@@ -91,17 +88,6 @@ func Open(path string) (*Store, error) {
 	if _, err := db.ExecContext(context.Background(), ddl); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("init schema: %w", err)
-	}
-
-	// CREATE TABLE IF NOT EXISTS leaves an older store without the columns
-	// added since, so they are added here. Each ALTER fails harmlessly once
-	// its column exists, which is why the errors are ignored.
-	for _, stmt := range []string{
-		`ALTER TABLE unknown_source ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'`,
-		`ALTER TABLE unknown_source ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE event ADD COLUMN collector INTEGER NOT NULL DEFAULT 0`,
-	} {
-		_, _ = db.ExecContext(context.Background(), stmt)
 	}
 	return &Store{db: db}, nil
 }

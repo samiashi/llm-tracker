@@ -302,3 +302,24 @@ func TestUsageIsCreditedToTheAccountSignedInAtItsTime(t *testing.T) {
 		}
 	}
 }
+
+// Harnesses write RFC3339 with and without fractional seconds, in UTC and in
+// a local offset; a record whose time will not parse is dated zero, never
+// guessed.
+func TestTimestampsParseWithAndWithoutFractions(t *testing.T) {
+	want := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	for in, want := range map[string]time.Time{
+		"2026-09-22T10:00:00Z":           want,
+		"2026-09-22T10:00:00.123Z":       want.Add(123 * time.Millisecond),
+		"2026-09-22T10:00:00.123456789Z": want.Add(123456789),
+		"2026-09-22T14:00:00+04:00":      want,
+		"2026-09-22T14:00:00.5+04:00":    want.Add(500 * time.Millisecond),
+		"":                               {},
+		"2026-09-22 10:00:00":            {},
+		"not a time":                     {},
+	} {
+		if got := parseTS(in); !got.Equal(want) {
+			t.Errorf("parseTS(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

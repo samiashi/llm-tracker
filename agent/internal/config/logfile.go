@@ -15,11 +15,11 @@ import (
 // change, a full disk or an unmounted volume makes every file fail at once, and
 // the log grows by hundreds of megabytes a day, which worsens a full disk.
 type RotatingFile struct {
-	mu   sync.Mutex
-	path string
-	max  int64
-	n    int64
-	f    *os.File
+	mu       sync.Mutex
+	path     string
+	maxBytes int64
+	n        int64
+	f        *os.File
 }
 
 // LogPath is the daemon's log in a data directory: the file it writes and the
@@ -30,11 +30,8 @@ func LogPath(dataDir string) string { return filepath.Join(dataDir, "agent.log")
 // disk.
 const DefaultLogMaxBytes = 8 << 20
 
-// OpenLog opens path for appending, rotating it when it passes max bytes.
-func OpenLog(path string, max int64) (*RotatingFile, error) {
-	if max <= 0 {
-		max = DefaultLogMaxBytes
-	}
+// OpenLog opens path for appending, rotating it when it passes maxBytes.
+func OpenLog(path string, maxBytes int64) (*RotatingFile, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
@@ -46,14 +43,14 @@ func OpenLog(path string, max int64) (*RotatingFile, error) {
 	if fi, serr := f.Stat(); serr == nil {
 		n = fi.Size()
 	}
-	return &RotatingFile{path: path, max: max, n: n, f: f}, nil
+	return &RotatingFile{path: path, maxBytes: maxBytes, n: n, f: f}, nil
 }
 
 func (r *RotatingFile) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.n+int64(len(p)) > r.max {
+	if r.n+int64(len(p)) > r.maxBytes {
 		// A failed rotation leaves the current file open and is retried on
 		// the next write, so the line that prompted it is not lost.
 		_ = r.rotate()

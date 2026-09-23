@@ -116,8 +116,6 @@ func TestEnrollAgainReplacesATokenOnlyWhenItNoLongerWorks(t *testing.T) {
 	}{
 		{"an enrolled token that works", schema.EnrolledTokenPrefix + "old", true, schema.EnrolledTokenPrefix + "old", 0},
 		{"a revoked token", schema.EnrolledTokenPrefix + "old", false, schema.EnrolledTokenPrefix + "new", 1},
-		// The shared token works, but is not this machine's own.
-		{"the shared token", "shared", true, schema.EnrolledTokenPrefix + "new", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("HOME", t.TempDir())

@@ -112,8 +112,7 @@ func TestIngestDecodesTheServersAck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.EventsSkipped != 1 || got.RetentionFloor != want.RetentionFloor ||
-		got.RetentionEnforced == nil || !*got.RetentionEnforced {
+	if got.EventsSkipped != 1 || got.RetentionFloor != want.RetentionFloor || !got.RetentionEnforced {
 		t.Fatalf("ack = %+v, want %+v", got, want)
 	}
 }
@@ -225,16 +224,18 @@ func TestAGzippedAckIsRead(t *testing.T) {
 	}
 }
 
-// Refused rows are re-offered on what the server says it accepts, never on its
-// silence.
-func TestRefusedRowsAreRequeuedOnlyOnAnExplicitNo(t *testing.T) {
-	for name, enforced := range map[string]string{
-		"field absent":  ``,
-		"still pruning": `,"retention_enforced":true`,
+// A server that still prunes takes nothing below its floor, and one whose
+// floor will not parse has not said where it lies: rows it refused stay
+// refused, or every push offers them again.
+func TestRefusedRowsStayRefusedWhileTheServerStillPrunes(t *testing.T) {
+	for name, floor := range map[string]string{
+		"floor above them": `,"retention_floor":"2999-01-01"`,
+		"no usable floor":  ``,
 	} {
 		t.Run(name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_, _ = io.WriteString(w, `{"server_version":"v1.0.0","events_received":0`+enforced+`}`)
+				_, _ = io.WriteString(w, `{"server_version":"v1.0.0","events_received":0,`+
+					`"retention_enforced":true`+floor+`}`)
 			}))
 			defer srv.Close()
 			st := storeWith(t, 2)
@@ -246,7 +247,7 @@ func TestRefusedRowsAreRequeuedOnlyOnAnExplicitNo(t *testing.T) {
 				t.Fatal(err)
 			}
 			if n, _ := st.CountRefused(context.Background()); n != 2 {
-				t.Fatalf("refused = %d, want 2 -- rows were re-queued without the server saying so", n)
+				t.Fatalf("refused = %d, want 2 -- rows were re-queued below the server's floor", n)
 			}
 		})
 	}
