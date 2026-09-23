@@ -50,8 +50,11 @@ var clockKeys = map[string]bool{
 }
 
 // zoneKeys depend on the server's time zone, which differs between the
-// machines that regenerate fixtures; pinned for the same reason.
-var zoneKeys = map[string]bool{"utc_offset_minutes": true}
+// machines that regenerate fixtures; pinned for the same reason, per fixture,
+// to what a server on UTC writes for the seeded event.
+var zoneKeys = map[string]map[string]any{
+	"heatmap": {"utc_offset_minutes": 0.0, "day": "2026-06-15", "weekday": 1.0, "hour": 14.0},
+}
 
 func TestDashboardContract(t *testing.T) {
 	s := newServer(t)
@@ -100,7 +103,7 @@ func TestDashboardContract(t *testing.T) {
 
 			path := filepath.Join(fixtureDir, name+".json")
 			if *update {
-				pin(live)
+				pin(live, zoneKeys[name])
 				b, err := json.MarshalIndent(live, "", "  ")
 				if err != nil {
 					t.Fatal(err)
@@ -174,7 +177,7 @@ func emptyArrays(v any, at string) []string {
 	return out
 }
 
-func pin(v any) {
+func pin(v any, zone map[string]any) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, e := range x {
@@ -182,15 +185,15 @@ func pin(v any) {
 				x[k] = float64(1_781_000_000)
 				continue
 			}
-			if _, isNum := e.(float64); isNum && zoneKeys[k] {
-				x[k] = float64(0)
+			if z, ok := zone[k]; ok {
+				x[k] = z
 				continue
 			}
-			pin(e)
+			pin(e, zone)
 		}
 	case []any:
 		for _, e := range x {
-			pin(e)
+			pin(e, zone)
 		}
 	}
 }
