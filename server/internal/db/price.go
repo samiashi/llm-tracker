@@ -6,8 +6,6 @@ import (
 	"errors"
 	"strings"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/samiashi/llm-tracker/schema"
 )
 

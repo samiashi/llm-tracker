@@ -3,8 +3,6 @@ package db
 import (
 	"context"
 	"database/sql"
-
-	_ "modernc.org/sqlite"
 )
 
 // PruneResult reports what a retention pass did.

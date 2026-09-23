@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	_ "modernc.org/sqlite" // opencode.db is SQLite; registered here, not inherited from store
+
 	"github.com/samiashi/llm-tracker/schema"
 )
 
