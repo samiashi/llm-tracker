@@ -3,12 +3,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -27,6 +29,15 @@ const upgradeRepo = "samiashi/llm-tracker"
 // defaultServer is the tracker enroll joins. The team runs one, so installing
 // the agent names nothing; -server exists for developing the server.
 const defaultServer = "https://llm-tracker.example.com"
+
+// ghCommand runs the GitHub CLI against github.com. upgradeRepo pins the path,
+// not the host: gh takes the host from GH_HOST, and anything that set it
+// would choose the server a release or a token comes from.
+func ghCommand(ctx context.Context, args ...string) *exec.Cmd {
+	c := exec.CommandContext(ctx, "gh", args...)
+	c.Env = append(os.Environ(), "GH_HOST=github.com")
+	return c
+}
 
 func main() {
 	if err := run(); err != nil {

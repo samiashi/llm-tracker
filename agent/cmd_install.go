@@ -54,29 +54,23 @@ func installBinary(src, dataDir string) (string, error) {
 	defer in.Close()
 
 	// Staged then renamed, so a failure part-way through cannot leave a
-	// half-written binary where launchd will try to start one.
+	// half-written binary where launchd will try to start one. The staged file
+	// is removed on every path, its errors dropped: after the rename there is
+	// none, and launchd never starts the temp name.
 	tmp := dst + ".new"
+	defer func() { _ = os.Remove(tmp) }()
 	out, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o700) //nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	// discard removes the staged file after a failed copy. Its own errors are
-	// dropped: the copy has already failed, and launchd never starts the temp
-	// name.
-	discard := func(e error) (string, error) {
-		_ = out.Close()
-		_ = os.Remove(tmp)
-		return "", e
-	}
+	defer out.Close()
 	if _, err := io.Copy(out, in); err != nil {
-		return discard(err)
+		return "", err
 	}
 	if err := out.Close(); err != nil {
-		_ = os.Remove(tmp)
 		return "", err
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
 		return "", err
 	}
 	return dst, nil

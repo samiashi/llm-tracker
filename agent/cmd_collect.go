@@ -82,13 +82,7 @@ func cmdSync(dataDir string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	c := tracker.New(cfg.ServerURL, cfg.Token, version, log)
-	stats, err := c.Push(ctx, st, machineID)
-	// Recorded as the daemon records its own, or `status` says "never"
-	// straight after a manual sync.
-	if rerr := st.RecordSync(ctx, stats.Events, err); rerr != nil {
-		log.Warn("recording sync health", "err", rerr)
-	}
+	stats, err := push(ctx, newClient(cfg, log), st, machineID, log)
 	if err != nil {
 		return err
 	}
@@ -102,6 +96,25 @@ func cmdSync(dataDir string, log *slog.Logger) error {
 			"%d are kept locally and no longer offered\n", stats.Skipped, stats.Retired)
 	}
 	return nil
+}
+
+// newClient returns the uploader for cfg, or nil before enrolment.
+func newClient(cfg config.Config, log *slog.Logger) *tracker.Client {
+	if cfg.ServerURL == "" {
+		return nil
+	}
+	return tracker.New(cfg.ServerURL, cfg.Token, version, log)
+}
+
+// push uploads what is pending and records the outcome for `status`, for the
+// daemon and a manual sync alike: unrecorded, status says "never" straight
+// after a sync.
+func push(ctx context.Context, c *tracker.Client, st *store.Store, machineID string, log *slog.Logger) (*tracker.Stats, error) {
+	stats, err := c.Push(ctx, st, machineID)
+	if rerr := st.RecordSync(ctx, stats.Events, err); rerr != nil {
+		log.Warn("recording sync health", "err", rerr)
+	}
+	return stats, err
 }
 
 // passInterval is how often the daemon collects and uploads.
@@ -140,10 +153,7 @@ func cmdRun(dataDir, home string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	var client *tracker.Client
-	if cfg.ServerURL != "" {
-		client = tracker.New(cfg.ServerURL, cfg.Token, version, log)
-	}
+	client := newClient(cfg, log)
 
 	log.Info("agent started", "interval", passInterval, "server", cfg.ServerURL, "machine", machineID)
 
@@ -170,19 +180,13 @@ func cmdRun(dataDir, home string, log *slog.Logger) error {
 			(fresh.ServerURL != cfg.ServerURL || fresh.Token != cfg.Token) {
 			log.Info("configuration changed, reloading", "server", fresh.ServerURL)
 			cfg = fresh
-			client = nil
-			if cfg.ServerURL != "" {
-				client = tracker.New(cfg.ServerURL, cfg.Token, version, log)
-			}
+			client = newClient(cfg, log)
 		}
 
 		// A sync failure is not fatal: the archive keeps accruing locally and
 		// the next pass retries.
 		if client != nil && ctx.Err() == nil {
-			stats, err := client.Push(ctx, st, machineID)
-			if rerr := st.RecordSync(ctx, stats.Events, err); rerr != nil {
-				log.Warn("recording sync health", "err", rerr)
-			}
+			stats, err := push(ctx, client, st, machineID, log)
 			if err != nil {
 				// A rejected credential never fixes itself, so it is logged
 				// at Error with the remedy rather than retried quietly.

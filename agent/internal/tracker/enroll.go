@@ -37,31 +37,16 @@ func Enroll(ctx context.Context, baseURL, githubToken string, in schema.EnrollRe
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+githubToken)
 
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
 		return out, err
 	}
 	defer resp.Body.Close()
-	reply := io.LimitReader(resp.Body, 64<<10)
-
-	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		return out, fmt.Errorf("server returned %d, redirecting to %q: the GitHub token goes "+
-			"to the tracker's own address and no further", resp.StatusCode, resp.Header.Get("Location"))
+	if err := refusal(resp, "the GitHub token goes to the tracker's own address and no further"); err != nil {
+		return out, err
 	}
-	if resp.StatusCode >= 300 {
-		var msg struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(reply).Decode(&msg)
-		return out, fmt.Errorf("server returned %d: %s", resp.StatusCode, msg.Error)
-	}
-	if err := json.NewDecoder(reply).Decode(&out); err != nil ||
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil ||
 		!strings.HasPrefix(out.Token, schema.EnrolledTokenPrefix) || out.Login == "" {
 		return schema.EnrollResponse{}, fmt.Errorf("%s did not answer with an enrolment "+
 			"(is the server URL right?)", baseURL)

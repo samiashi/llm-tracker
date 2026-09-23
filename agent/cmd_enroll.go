@@ -91,9 +91,7 @@ func githubToken(ctx context.Context) (string, error) {
 		return "", errors.New("enrolling needs the GitHub CLI, signed in: " +
 			"brew install gh && gh auth login")
 	}
-	c := exec.CommandContext(ctx, "gh", "auth", "token", "--hostname", "github.com")
-	// As for upgrade: the host is pinned, not taken from the environment.
-	c.Env = append(os.Environ(), "GH_HOST=github.com")
+	c := ghCommand(ctx, "auth", "token", "--hostname", "github.com")
 	var stderr strings.Builder
 	c.Stderr = &stderr
 	out, err := c.Output()

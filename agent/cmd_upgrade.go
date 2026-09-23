@@ -52,14 +52,9 @@ func cmdUpgrade(log *slog.Logger, dataDir string, force bool) error {
 	defer func() { _ = os.Remove(staged) }()
 
 	log.Info("downloading latest release", "asset", asset, "into", dir)
-	// The constant upgradeRepo pins the path, not the host: gh takes GH_HOST
-	// from the environment, and anything that set it would choose the server.
-	ghEnv := append(os.Environ(), "GH_HOST=github.com")
-
 	download := func(pattern, dest string) error {
-		c := exec.CommandContext(ctx, "gh", "release", "download",
+		c := ghCommand(ctx, "release", "download",
 			"--repo", upgradeRepo, "--pattern", pattern, "--output", dest, "--clobber")
-		c.Env = ghEnv
 		c.Stderr = os.Stderr
 		return c.Run()
 	}

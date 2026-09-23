@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -42,16 +43,11 @@ func New(baseURL, token, version string, log *slog.Logger) *Client {
 		BaseURL: baseURL,
 		Token:   token,
 		Version: version,
-		HTTP: &http.Client{
-			Timeout: 120 * time.Second,
-			// A redirect is never an acknowledgement: followed, a POST behind
-			// a login redirect becomes a GET for the login page, whose 200
-			// would mark the batch sent.
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
-		Log: log,
+		// A redirect is never an acknowledgement: followed, a POST behind a
+		// login redirect becomes a GET for the login page, whose 200 would
+		// mark the batch sent.
+		HTTP: &http.Client{Timeout: 120 * time.Second, CheckRedirect: noRedirect},
+		Log:  log,
 	}
 }
 
@@ -126,64 +122,24 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 			body.UnknownSource = unknownDTO
 			body.UnknownComplete = true
 		}
-		ack, err := c.ingest(ctx, body)
+		reply, err := c.ingest(ctx, body)
 		if err != nil {
 			return stats, err
 		}
-
-		// Re-offer whatever the server would now take: everything once it keeps
-		// everything, else the refused rows at or above its current floor,
-		// which stay at sent = 2 otherwise.
-		requeued := int64(0)
-		if from, ok := acceptsFrom(ack); ok {
-			if requeued, err = st.Requeue(ctx, from); err != nil {
-				return stats, err
-			}
-			if requeued > 0 {
-				c.Log.Info("re-queueing events the server refused before and would now take",
-					"requeued", requeued)
-			}
+		requeued, err := c.requeueAccepted(ctx, st, reply)
+		if err != nil {
+			return stats, err
 		}
-
-		// The server drops events older than its retention floor and says so.
-		// They are retired, not marked sent (see store.Refused), so the rest of
-		// the queue drains.
-		if ack.EventsSkipped > 0 {
-			retired := 0
-			if before, ok := floorStart(ack.RetentionFloor); ok {
-				n, err := st.Refused(ctx, before)
-				if err != nil {
-					return stats, err
-				}
-				retired = int(n)
-			}
-			c.Log.Warn("the server will not accept events older than its retention floor",
-				"skipped", ack.EventsSkipped, "floor", ack.RetentionFloor, "retired", retired,
-				"fix", "they predate the server's retention window and are kept "+
-					"locally, not uploaded. The floor only ever moves forward, so "+
-					"widening -retain will not re-admit them; turn pruning off to "+
-					"let this backlog deliver")
-			stats.Skipped += ack.EventsSkipped
-			stats.Retired += retired
-			// Continue only if the queue moved. Retiring nothing -- an older
-			// server that reports no floor, or one that will not parse --
-			// would fetch the same batch and loop forever inside one push.
-			if retired == 0 {
-				c.Log.Error("the server refused a batch but reported no retention floor",
-					"skipped", ack.EventsSkipped,
-					"fix", "upgrade the server; until then this backlog cannot be cleared")
-				// An error, not nil: nil would record a successful sync, and
-				// `status` would report a healthy agent whose backlog is stuck.
-				return stats, fmt.Errorf(
-					"server refused %d events and reported no usable retention floor",
-					ack.EventsSkipped)
+		if reply.EventsSkipped > 0 {
+			if err := c.retireRefused(ctx, st, reply, stats); err != nil {
+				return stats, err
 			}
 			continue
 		}
-		if ack.EventsRejected > 0 {
+		if reply.EventsRejected > 0 {
 			c.Log.Error("the server rejected events as implausible",
-				"rejected", ack.EventsRejected, "batch", len(eventIDs))
-			stats.Rejected += ack.EventsRejected
+				"rejected", reply.EventsRejected, "batch", len(eventIDs))
+			stats.Rejected += reply.EventsRejected
 		}
 
 		if err := st.MarkSent(ctx, eventIDs); err != nil {
@@ -197,12 +153,63 @@ func (c *Client) Push(ctx context.Context, st *store.Store, machineID string) (*
 		stats.Batches++
 		stats.Events += len(eventIDs)
 
-		// A short batch means the queue is drained, unless this ack put rows
-		// back into it.
+		// A short batch means the queue is drained, unless this reply put
+		// rows back into it.
 		if len(eventIDs) < batchSize && requeued == 0 {
 			return stats, nil
 		}
 	}
+}
+
+// requeueAccepted re-offers what the server would now take -- every refused
+// event once it keeps everything, else those at or above its current floor,
+// which stay at sent = 2 otherwise -- and returns how many went back.
+func (c *Client) requeueAccepted(ctx context.Context, st *store.Store, reply schema.IngestAck) (int64, error) {
+	from, ok := acceptsFrom(reply)
+	if !ok {
+		return 0, nil
+	}
+	n, err := st.Requeue(ctx, from)
+	if n > 0 {
+		c.Log.Info("re-queueing events the server refused before and would now take",
+			"requeued", n)
+	}
+	return n, err
+}
+
+// retireRefused takes the events the server refused as older than its
+// retention floor out of the queue. They are retired, not marked sent (see
+// store.Refused), so the rest of the queue drains.
+func (c *Client) retireRefused(ctx context.Context, st *store.Store, reply schema.IngestAck, stats *Stats) error {
+	retired := 0
+	if before, ok := floorStart(reply.RetentionFloor); ok {
+		n, err := st.Refused(ctx, before)
+		if err != nil {
+			return err
+		}
+		retired = int(n)
+	}
+	c.Log.Warn("the server will not accept events older than its retention floor",
+		"skipped", reply.EventsSkipped, "floor", reply.RetentionFloor, "retired", retired,
+		"fix", "they predate the server's retention window and are kept "+
+			"locally, not uploaded. The floor only ever moves forward, so "+
+			"widening -retain will not re-admit them; turn pruning off to "+
+			"let this backlog deliver")
+	stats.Skipped += reply.EventsSkipped
+	stats.Retired += retired
+	// The push goes on only if the queue moved. Retiring nothing -- a floor
+	// that will not parse, or one below every refused row -- would fetch the
+	// same batch and loop forever inside one push.
+	if retired == 0 {
+		c.Log.Error("the server refused a batch but reported no usable retention floor",
+			"skipped", reply.EventsSkipped, "floor", reply.RetentionFloor,
+			"fix", "upgrade the server; until then this backlog cannot be cleared")
+		// An error, not nil: nil would record a successful sync, and `status`
+		// would report a healthy agent whose backlog is stuck.
+		return fmt.Errorf("server refused %d events and reported no usable retention floor",
+			reply.EventsSkipped)
+	}
+	return nil
 }
 
 // wireBatch is schema.Batch with its events already encoded, so rows are not
@@ -267,16 +274,8 @@ func (c *Client) ingest(ctx context.Context, body wireBatch) (schema.IngestAck, 
 		return a, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		return a, fmt.Errorf("server returned %d, redirecting to %q: the server URL "+
-			"must be the tracker's own address", resp.StatusCode, resp.Header.Get("Location"))
-	}
-	if resp.StatusCode >= 300 {
-		var msg struct {
-			Error string `json:"error"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&msg)
-		return a, fmt.Errorf("server returned %d: %s", resp.StatusCode, msg.Error)
+	if err := refusal(resp, "the server URL must be the tracker's own address"); err != nil {
+		return a, err
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&a); err != nil {
@@ -298,6 +297,27 @@ func (c *Client) ingest(ctx context.Context, body wireBatch) (schema.IngestAck, 
 func (c *Client) Check(ctx context.Context) error {
 	_, err := c.ingest(ctx, wireBatch{Batch: schema.Batch{V: schema.Version, AgentVersion: c.Version}})
 	return err
+}
+
+// noRedirect stops a client at the first redirect, returning it as the reply.
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+// refusal is the error for a reply that is not a 2xx, in the "server returned
+// <code>" wording AuthRejected matches, or nil for one that is. onRedirect
+// says why a redirect is not followed.
+func refusal(resp *http.Response, onRedirect string) error {
+	switch {
+	case resp.StatusCode < 300:
+		return nil
+	case resp.StatusCode < 400:
+		return fmt.Errorf("server returned %d, redirecting to %q: %s",
+			resp.StatusCode, resp.Header.Get("Location"), onRedirect)
+	}
+	var msg struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&msg)
+	return fmt.Errorf("server returned %d: %s", resp.StatusCode, msg.Error)
 }
 
 // AuthRejected reports whether a sync failure -- an error's text, or the copy
