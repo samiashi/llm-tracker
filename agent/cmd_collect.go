@@ -15,7 +15,7 @@ import (
 	"github.com/samiashi/llm-tracker/agent/internal/config"
 	"github.com/samiashi/llm-tracker/agent/internal/identity"
 	"github.com/samiashi/llm-tracker/agent/internal/store"
-	"github.com/samiashi/llm-tracker/agent/internal/sync"
+	"github.com/samiashi/llm-tracker/agent/internal/tracker"
 	"github.com/samiashi/llm-tracker/schema"
 )
 
@@ -82,7 +82,7 @@ func cmdSync(dataDir string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	c := sync.New(cfg.ServerURL, cfg.Token, version, log)
+	c := tracker.New(cfg.ServerURL, cfg.Token, version, log)
 	stats, err := c.Push(ctx, st, machineID)
 	// Recorded as the daemon records its own, or `status` says "never"
 	// straight after a manual sync.
@@ -140,9 +140,9 @@ func cmdRun(dataDir, home string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	var client *sync.Client
+	var client *tracker.Client
 	if cfg.ServerURL != "" {
-		client = sync.New(cfg.ServerURL, cfg.Token, version, log)
+		client = tracker.New(cfg.ServerURL, cfg.Token, version, log)
 	}
 
 	log.Info("agent started", "interval", passInterval, "server", cfg.ServerURL, "machine", machineID)
@@ -172,7 +172,7 @@ func cmdRun(dataDir, home string, log *slog.Logger) error {
 			cfg = fresh
 			client = nil
 			if cfg.ServerURL != "" {
-				client = sync.New(cfg.ServerURL, cfg.Token, version, log)
+				client = tracker.New(cfg.ServerURL, cfg.Token, version, log)
 			}
 		}
 
@@ -186,7 +186,7 @@ func cmdRun(dataDir, home string, log *slog.Logger) error {
 			if err != nil {
 				// A rejected credential never fixes itself, so it is logged
 				// at Error with the remedy rather than retried quietly.
-				if sync.AuthRejected(err.Error()) {
+				if tracker.AuthRejected(err.Error()) {
 					log.Error("the server rejected this agent's token; nothing will upload until it is fixed",
 						"err", err,
 						"fix", agentCmd(dataDir, "enroll"))

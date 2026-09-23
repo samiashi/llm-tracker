@@ -31,9 +31,9 @@ echo ` + colleagueGitHubToken + "\n"
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// tracker enrols anyone presenting colleagueGitHubToken, issuing issued, and
+// fakeTracker enrols anyone presenting colleagueGitHubToken, issuing issued, and
 // accepts uploads from the tokens in live.
-type tracker struct {
+type fakeTracker struct {
 	*httptest.Server
 	issued    string
 	live      map[string]bool
@@ -41,8 +41,8 @@ type tracker struct {
 	sawGitHub atomic.Bool // the GitHub token reached anything but /v1/enroll
 }
 
-func newTracker(t *testing.T, issued string, live ...string) *tracker {
-	tr := &tracker{issued: issued, live: map[string]bool{issued: true}}
+func newTracker(t *testing.T, issued string, live ...string) *fakeTracker {
+	tr := &fakeTracker{issued: issued, live: map[string]bool{issued: true}}
 	for _, tok := range live {
 		tr.live[tok] = true
 	}

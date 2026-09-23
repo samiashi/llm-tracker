@@ -10,7 +10,7 @@ import (
 	"github.com/samiashi/llm-tracker/agent/internal/config"
 	"github.com/samiashi/llm-tracker/agent/internal/identity"
 	"github.com/samiashi/llm-tracker/agent/internal/launchd"
-	"github.com/samiashi/llm-tracker/agent/internal/sync"
+	"github.com/samiashi/llm-tracker/agent/internal/tracker"
 )
 
 func cmdStatus(dataDir string) error {
@@ -64,7 +64,7 @@ func cmdStatus(dataDir string) error {
 	switch {
 	case h.LastSyncErr != "":
 		fmt.Println("last sync: FAILING --", h.LastSyncErr)
-		if sync.AuthRejected(h.LastSyncErr) {
+		if tracker.AuthRejected(h.LastSyncErr) {
 			fmt.Println("          the token was rejected; nothing will upload until it is replaced:")
 			fmt.Println("          " + agentCmd(dataDir, "enroll"))
 		}

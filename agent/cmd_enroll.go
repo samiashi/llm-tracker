@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/samiashi/llm-tracker/agent/internal/config"
-	"github.com/samiashi/llm-tracker/agent/internal/sync"
+	"github.com/samiashi/llm-tracker/agent/internal/tracker"
 	"github.com/samiashi/llm-tracker/schema"
 )
 
@@ -34,7 +34,7 @@ func cmdEnroll(dataDir, server string, log *slog.Logger) error {
 		return err
 	}
 	// Refused before gh is asked for anything.
-	if err := sync.RequireTLS(base); err != nil {
+	if err := tracker.RequireTLS(base); err != nil {
 		return err
 	}
 
@@ -45,7 +45,7 @@ func cmdEnroll(dataDir, server string, log *slog.Logger) error {
 		return err
 	}
 	if cfg.ServerURL == base && strings.HasPrefix(cfg.Token, schema.EnrolledTokenPrefix) &&
-		sync.New(base, cfg.Token, version, log).Check(ctx) == nil {
+		tracker.New(base, cfg.Token, version, log).Check(ctx) == nil {
 		fmt.Println("already enrolled with", base)
 		return nil
 	}
@@ -55,14 +55,14 @@ func cmdEnroll(dataDir, server string, log *slog.Logger) error {
 		return err
 	}
 	hostname, _ := os.Hostname()
-	res, err := sync.Enroll(ctx, base, ghToken, schema.EnrollRequest{Hostname: hostname})
+	res, err := tracker.Enroll(ctx, base, ghToken, schema.EnrollRequest{Hostname: hostname})
 	if err != nil {
 		return fmt.Errorf("enrolling with %s: %w", base, err)
 	}
 
 	// Checked before it is saved: the daemon re-reads the file every pass, so
 	// a token saved unchecked would stop a working agent uploading.
-	if err := sync.New(base, res.Token, version, log).Check(ctx); err != nil {
+	if err := tracker.New(base, res.Token, version, log).Check(ctx); err != nil {
 		return fmt.Errorf("%s issued a token but refused an upload with it: %w; nothing was saved", base, err)
 	}
 	if err := config.Save(dataDir, config.Config{ServerURL: base, Token: res.Token}); err != nil {

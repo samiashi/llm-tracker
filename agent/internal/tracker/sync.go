@@ -1,5 +1,5 @@
-// Package sync uploads the local archive to the team server.
-package sync
+// Package tracker uploads the local archive to the team server.
+package tracker
 
 import (
 	"bytes"
