@@ -248,17 +248,22 @@ git tag v1.4.0 && git push origin v1.4.0
    rate. `agent` holds a read-only token and hands its files to `publish` as
    workflow artifacts, kept 7 days; `image` pushes both architectures
    untagged, by digest.
-3. **`publish`**, the only job with `contents: write`, checks each `.sha256`
-   against its binary, creates the draft release or reuses its own from an
-   earlier attempt (recognised by `Built from <sha>.` in its body), uploads,
-   checks that exactly the promised assets are attached and that the tag still
-   points at the commit, tags the image, and only then makes the release
-   visible — so nobody tracking the latest release or `:latest` gets one whose
-   other half never built. A backport — a tag below the highest published
-   release — ships with `--latest=false` and leaves `:latest` alone.
-4. **`deploy`** runs `deploy/gcp/deploy.sh upgrade` for the highest release
-   only, never a backport, and only once `create` has stored the `GCP_*`
-   repository variables. It holds no key: Workload Identity Federation
+3. **`publish`** checks each `.sha256` against its binary, creates the draft
+   release or reuses its own from an earlier attempt (recognised by
+   `Built from <sha>.` in its body), uploads, checks that exactly the promised
+   assets are attached and that the tag still points at the commit, tags the
+   image, and only then makes the release public — so nobody tracking the
+   latest release gets one whose other half never built — without making it
+   Latest. **`latest`** then marks the highest published release Latest and
+   points `:latest` at it, and reads the releases again afterwards, marking
+   again if a higher one appeared: two tags pushed together each find the
+   other still a draft. A backport's run marks nothing. Only these two jobs
+   can write a release.
+4. **`deploy`** runs `deploy/gcp/deploy.sh upgrade` for the release `latest`
+   marked, never a backport, and only once `create` has stored the `GCP_*`
+   repository variables. It skips if its tag is no longer Latest when its turn
+   comes, so a lower release that waited behind a higher one never moves the
+   server back. It holds no key: Workload Identity Federation
    exchanges GitHub's OIDC token for a deploy service account's short-lived
    credentials, and accepts only this repository's `release.yml` on a `v*`
    tag. That account can snapshot the disk, set the VM's metadata and SSH in
