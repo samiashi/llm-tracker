@@ -64,7 +64,7 @@ func TestDashboardContract(t *testing.T) {
 	// in a fixture type-checks against anything.
 	e := event("contract-1", "claude-opus-5", "anthropic:a", 1_000)
 	e.TS = time.Date(2026, 6, 15, 14, 0, 0, 0, time.UTC)
-	e.Effort, e.SessionID, e.ProjectPath = "high", "session-1", "/p"
+	e.Effort, e.SessionID = "high", "session-1"
 	if _, err := s.DB.Ingest(context.Background(), &schema.Batch{
 		V: schema.Version, MachineID: "m", Hostname: "host", AgentVersion: "v1.4.0",
 		Events:   []schema.Event{e},

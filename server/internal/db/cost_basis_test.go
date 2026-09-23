@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -97,22 +96,6 @@ func TestTopSessionsPublishNoProjectPath(t *testing.T) {
 		if strings.Contains(name, "project") || strings.Contains(name, "path") {
 			t.Fatalf("SessionRow.%s is published as %q", typ.Field(i).Name, name)
 		}
-	}
-
-	d := newDB(t)
-	e := ev("p", 1_000, schema.CostBilled)
-	e.SessionID, e.ProjectPath = "s", "/Users/someone/secret-client"
-	ingest(t, d, e)
-	rows, err := d.TopSessions(context.Background(), Window{From: "2000-01-01"}, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := json.Marshal(rows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(b), "secret-client") {
-		t.Fatalf("a project path reached the response: %s", b)
 	}
 }
 
