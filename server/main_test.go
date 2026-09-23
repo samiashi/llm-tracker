@@ -58,15 +58,13 @@ type reply struct {
 	Header     http.Header
 }
 
-// send serves one request addressed to host, carrying what an agent's
-// upload carries.
-func send(h http.Handler, method, target, host string) reply {
+// send serves one request carrying what an agent's upload carries.
+func send(h http.Handler, method, target string) reply {
 	var body io.Reader
 	if method == http.MethodPost {
 		body = strings.NewReader(`{"v":1,"machine_id":"m","events":[]}`)
 	}
 	req := httptest.NewRequest(method, target, body)
-	req.Host = host
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -76,8 +74,6 @@ func send(h http.Handler, method, target, host string) reply {
 	return reply{res.StatusCode, res.Header}
 }
 
-const local = "127.0.0.1:8790"
-
 func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 	h := handler(t)
 	for _, tc := range []struct{ method, path string }{
@@ -86,7 +82,7 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 		{"GET", "/v1/no-such-endpoint"}, {"POST", "/v1/summary"}, {"GET", "/"},
 		{"POST", "/v1/ingest"}, {"POST", "/v1/enroll"},
 	} {
-		res := send(h, tc.method, tc.path, local)
+		res := send(h, tc.method, tc.path)
 		for k, want := range map[string]string{
 			"X-Content-Type-Options": "nosniff",
 			"X-Frame-Options":        "DENY",
@@ -116,7 +112,7 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 func TestStaticCachingNeverReachesTheLoginRedirect(t *testing.T) {
 	h := handler(t)
 	for _, path := range []string{"/assets/index-abc123.js", "/", "/v1/summary"} {
-		res := send(h, "GET", path, local)
+		res := send(h, "GET", path)
 		if got := res.Header.Get("Cache-Control"); got != "no-store" {
 			t.Errorf("%s (%d): Cache-Control = %q, want no-store", path, res.StatusCode, got)
 		}
@@ -128,7 +124,7 @@ func TestNoOtherSpellingOfAnExemptRouteServesThePage(t *testing.T) {
 	for _, tc := range []struct{ method, path string }{
 		{"GET", "/v1%2Fingest"}, {"GET", "/auth%2Flogin"}, {"POST", "/auth/login"}, {"POST", "/healthz"},
 	} {
-		res := send(h, tc.method, tc.path, local)
+		res := send(h, tc.method, tc.path)
 		if res.StatusCode == http.StatusOK {
 			t.Errorf("%s %s was served (%s) without a session", tc.method, tc.path,
 				res.Header.Get("Content-Type"))
@@ -155,6 +151,23 @@ func TestTheServerNamesEveryMissingAuthSetting(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "GITHUB_ORG") {
 		t.Errorf("%v names the org, which is set", err)
+	}
+}
+
+// -retain N rolls up only what is older than N UTC days. A cutoff on the
+// wrong side of today rolls up the live window, and ingest then refuses every
+// agent's current events as below the floor.
+func TestPruneCutoffLeavesTheRetentionWindowRaw(t *testing.T) {
+	for _, n := range []int{1, 30, 90} {
+		before := time.Now().UTC()
+		got := pruneCutoff(n)
+		after := time.Now().UTC()
+		// Either side of a midnight the call may straddle.
+		if got != before.AddDate(0, 0, -n).Format(time.DateOnly) &&
+			got != after.AddDate(0, 0, -n).Format(time.DateOnly) {
+			t.Errorf("pruneCutoff(%d) = %s on %s, want the day %d days before", n, got,
+				after.Format(time.DateOnly), n)
+		}
 	}
 }
 

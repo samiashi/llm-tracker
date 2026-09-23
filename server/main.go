@@ -27,7 +27,6 @@ var version = "dev"
 // functions, so every exit path in run still closes the database.
 func main() { os.Exit(run()) }
 
-//nolint:gocyclo // a flat startup sequence reads better than split helpers
 func run() int {
 	addr := flag.String("addr", "127.0.0.1:8790", "listen address")
 	dsn := flag.String("db", "llm-tracker.db", "sqlite path")
@@ -209,7 +208,7 @@ func probe(addr string) int {
 		fmt.Fprintln(os.Stderr, "healthcheck:", err)
 		return 1
 	}
-	defer resp.Body.Close() //nolint:errcheck
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintln(os.Stderr, "healthcheck: status", resp.StatusCode)
 		return 1
@@ -251,7 +250,7 @@ func repriceIfChanged(ctx context.Context, d *db.DB, log *slog.Logger) {
 // pruneDaily rolls up and deletes raw events older than retain days, once at
 // startup and then every 24 hours, until ctx is cancelled.
 func pruneDaily(ctx context.Context, d *db.DB, retain int, log *slog.Logger) {
-	run := func() {
+	pruneOnce := func() {
 		cutoff := pruneCutoff(retain)
 		res, err := d.Prune(ctx, cutoff)
 		if err != nil {
@@ -271,7 +270,7 @@ func pruneDaily(ctx context.Context, d *db.DB, retain int, log *slog.Logger) {
 		}
 	}
 
-	run()
+	pruneOnce()
 	t := time.NewTicker(24 * time.Hour)
 	defer t.Stop()
 	for {
@@ -279,12 +278,13 @@ func pruneDaily(ctx context.Context, d *db.DB, retain int, log *slog.Logger) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			run()
+			pruneOnce()
 		}
 	}
 }
 
-// pruneCutoff is the first UTC day a prune keeping the last days days leaves raw.
-func pruneCutoff(days int) string {
-	return time.Now().UTC().AddDate(0, 0, -days).Format(time.DateOnly)
+// pruneCutoff is the first UTC day left raw by a prune that keeps the last n
+// days.
+func pruneCutoff(n int) string {
+	return time.Now().UTC().AddDate(0, 0, -n).Format(time.DateOnly)
 }
