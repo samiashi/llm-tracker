@@ -1,19 +1,9 @@
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import type { ModelDay } from "@/api";
-import { shortDay, tokens, spansYears } from "@/format";
+import { shortDay, spansYears } from "@/format";
 import { MODEL_SLOTS } from "@/palette";
 import { calendarDays } from "@/series";
 import type { DayRange } from "@/series";
-import { ChartTooltip, Legend } from "@/components/chart";
-import { usePrefersReducedMotion } from "@/motion";
+import { OverlaidAreas } from "@/components/OverlaidAreas";
 
 /**
  * Model mix over time: a team moving from a premium model to a cheaper one
@@ -28,7 +18,6 @@ export function ModelChart({
   range?: DayRange;
   height?: number;
 }) {
-  const reducedMotion = usePrefersReducedMotion();
   if (points.length === 0) return <p className="empty">No activity in this range.</p>;
 
   // Ranked over the whole range, so a colour means one model on every day.
@@ -60,54 +49,12 @@ export function ModelChart({
   );
 
   return (
-    <>
-      <Legend items={models.map((m, i) => ({ color: MODEL_SLOTS[i], label: m }))} />
-      <ResponsiveContainer width="100%" height={height}>
-        <AreaChart
-          accessibilityLayer
-          role="img"
-          aria-label={`Tokens per day for the busiest models, ${data.length} days`}
-          data={data}
-          margin={{ top: 4, right: 6, left: 0, bottom: 0 }}
-        >
-          <CartesianGrid stroke="var(--grid)" vertical={false} />
-          <XAxis
-            dataKey="day"
-            tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-            stroke="var(--axis)"
-            tickLine={false}
-            minTickGap={24}
-          />
-          <YAxis
-            tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-            stroke="var(--axis)"
-            tickLine={false}
-            axisLine={false}
-            width={44}
-            tickFormatter={(v) => tokens(v as number)}
-          />
-          <Tooltip
-            content={<ChartTooltip showTotal={false} />}
-            cursor={{ stroke: "var(--axis)", strokeWidth: 1 }}
-          />
-          {models.map((m, i) => (
-            <Area
-              key={m}
-              type="monotone"
-              dataKey={m}
-              name={m}
-              // Not stacked: the highest line is the heaviest model. Stacked,
-              // the top line is a running total no model ever reached.
-              stroke={MODEL_SLOTS[i]}
-              strokeWidth={2}
-              fill={MODEL_SLOTS[i]}
-              fillOpacity={0.16}
-              activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--surface-1)" }}
-              isAnimationActive={!reducedMotion}
-            />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
-    </>
+    <OverlaidAreas
+      data={data}
+      lines={models.map((m, i) => ({ key: m, name: m, color: MODEL_SLOTS[i] }))}
+      height={height}
+      showTotal={false}
+      label={`Tokens per day for the busiest models, ${data.length} days`}
+    />
   );
 }
