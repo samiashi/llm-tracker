@@ -43,11 +43,16 @@ LOGIN="$(gh api user --jq .login 2>/dev/null)" ||
   die "gh could not read its GitHub account. Run: gh auth status"
 say "Installing as $LOGIN."
 
-case "$(uname -m)" in
-  arm64)  ARCH=arm64 ;;
-  x86_64) ARCH=amd64 ;;
-  *)      die "No release is built for $(uname -m)." ;;
-esac
+# uname -m says x86_64 in a shell running under Rosetta, which would install
+# the Intel build on Apple silicon, where hw.optional.arm64 is 1 regardless.
+# An Intel Mac has no such key, which -i turns into an empty answer.
+if [ "$(sysctl -in hw.optional.arm64)" = 1 ]; then
+  ARCH=arm64
+elif [ "$(uname -m)" = x86_64 ]; then
+  ARCH=amd64
+else
+  die "No release is built for $(uname -m)."
+fi
 ASSET="$NAME-darwin-$ARCH"
 
 TMP="$(mktemp -d)"

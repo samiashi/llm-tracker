@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,10 +38,11 @@ func serveRelease(t *testing.T, dir string) {
 }
 
 // runInstallScript runs install.sh as colleagues do, piped to sh, on a stand-in
-// Mac: HOME and TMPDIR are temporary, gh serves dir/release, and launchctl only
-// records that it was called. It returns the output, every run of a served
-// agent and every launchctl call, in order, and the script's error.
-func runInstallScript(t *testing.T, dir string) (string, []string, error) {
+// Mac: HOME and TMPDIR are temporary, gh serves dir/release, launchctl only
+// records that it was called, and stubs adds or replaces commands on PATH. It
+// returns the output, every run of a served agent and every launchctl call, in
+// order, and the script's error.
+func runInstallScript(t *testing.T, dir string, stubs map[string]string) (string, []string, error) {
 	t.Helper()
 	script, err := os.ReadFile("../install.sh")
 	if err != nil {
@@ -53,7 +55,7 @@ func runInstallScript(t *testing.T, dir string) (string, []string, error) {
 		}
 	}
 	calls := filepath.Join(dir, "calls")
-	stubs := map[string]string{
+	path := map[string]string{
 		// install.sh pins GH_HOST itself, so a gh pointed anywhere else fails.
 		"gh": `#!/bin/sh
 [ "$GH_HOST" = github.com ] || { echo "gh used with GH_HOST=$GH_HOST" >&2; exit 2; }
@@ -71,7 +73,8 @@ esac
 `,
 		"launchctl": "#!/bin/sh\necho \"launchctl $*\" >> '" + calls + "'\nexit 1\n",
 	}
-	for name, body := range stubs {
+	maps.Copy(path, stubs)
+	for name, body := range path {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -125,7 +128,7 @@ func TestInstallScriptRunsNothingItCouldNotVerify(t *testing.T) {
 				}
 			}
 
-			out, runs, err := runInstallScript(t, dir)
+			out, runs, err := runInstallScript(t, dir, nil)
 			_, missing := os.Stat(filepath.Join(dir, "home", ".local", "bin", "llm-tracker-agent"))
 			if tc.refusal != "" {
 				if err == nil || !strings.Contains(out, tc.refusal) || len(runs) > 0 || missing == nil {
@@ -146,6 +149,50 @@ func TestInstallScriptRunsNothingItCouldNotVerify(t *testing.T) {
 			}
 			if want := []string{"version", "enroll", "install"}; !slices.Equal(cmds, want) {
 				t.Errorf("runs %q, want the agent asked to %q", runs, want)
+			}
+		})
+	}
+}
+
+// uname -m says x86_64 in a shell running under Rosetta, and choosing the
+// build by it put the Intel agent on Apple silicon.
+func TestInstallScriptPicksTheBuildForTheHardware(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("install.sh is macOS only")
+	}
+	for _, tc := range []struct {
+		name         string
+		machine      string // what uname -m says
+		appleSilicon bool
+		want         string
+	}{
+		{"Apple silicon", "arm64", true, "arm64"},
+		{"Apple silicon, from a shell under Rosetta", "x86_64", true, "arm64"},
+		{"an Intel Mac", "x86_64", false, "amd64"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Only Apple silicon has the flag; sysctl -i skips an unknown one.
+			arm64 := "case \"$1\" in -*i*) exit 0 ;; esac\n" +
+				"echo \"sysctl: unknown oid 'hw.optional.arm64'\" >&2; exit 1"
+			if tc.appleSilicon {
+				arm64 = "echo 1"
+			}
+			stubs := map[string]string{
+				"uname": "#!/bin/sh\ncase \"$1\" in -s) echo Darwin ;; -m) echo " + tc.machine + " ;; *) exit 2 ;; esac\n",
+				"sysctl": "#!/bin/sh\ncase \"$*\" in *hw.optional.arm64) ;; *) echo \"unexpected: sysctl $*\" >&2; exit 2 ;; esac\n" +
+					arm64 + "\n",
+			}
+			dir := t.TempDir()
+			serveRelease(t, dir)
+
+			out, runs, err := runInstallScript(t, dir, stubs)
+			if err != nil || len(runs) == 0 {
+				t.Fatalf("not installed: %v\n%s", err, out)
+			}
+			for _, r := range runs {
+				if arch, _, _ := strings.Cut(r, " "); arch != tc.want {
+					t.Fatalf("ran the %s build, want %s; runs %q", arch, tc.want, runs)
+				}
 			}
 		})
 	}
