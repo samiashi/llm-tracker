@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/samiashi/llm-tracker/agent/internal/launchd"
-	"github.com/samiashi/llm-tracker/agent/internal/tracker"
+	"github.com/samiashi/llm-tracker/schema"
 )
 
 // cmdUpgrade replaces this binary with the latest release, then refreshes the
@@ -134,13 +134,13 @@ func upgradeVerdict(running, latest string, force bool) (replace bool, err error
 	if force {
 		return true, nil
 	}
-	have, ok := tracker.ReleaseVersion(running)
+	have, ok := schema.ReleaseVersion(running)
 	if !ok {
 		// dev or <sha>-dirty: nothing to compare, and any release is the way
 		// back to one.
 		return true, nil
 	}
-	want, ok := tracker.ReleaseVersion(latest)
+	want, ok := schema.ReleaseVersion(latest)
 	if !ok {
 		return false, fmt.Errorf("the latest release reports version %q, which is not vX.Y.Z; "+
 			"pass -force to install it anyway", latest)

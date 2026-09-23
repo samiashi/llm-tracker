@@ -194,7 +194,7 @@ worse than a gap.
 Three, and conflating them is the trap:
 
 - **Release tag** (`v1.4.0`) — which build is installed, set from
-  `git describe` at build time. `sync.ReleaseVersion` parses `X.Y.Z`, with or
+  `git describe` at build time. `schema.ReleaseVersion` parses `X.Y.Z`, with or
   without the `v`, and nothing else: `dev` and `<sha>-dirty` are not releases.
   One tag builds both halves (see Releasing).
 - **`schema.Version`** — the wire format. Old agents stay installed on
@@ -264,7 +264,7 @@ ingest, which is how an agent learns it is stale without reaching GitHub, and
 what the dashboard's upgrade target is. Release them separately and the
 server's version stops meaning anything.
 
-**The tag must be exactly `vX.Y.Z`.** Anything `sync.ReleaseVersion` cannot
+**The tag must be exactly `vX.Y.Z`.** Anything `schema.ReleaseVersion` cannot
 parse — `v1.4`, `v1.4.0-rc1` — silently turns off the staleness check for the
 whole fleet, and `agent upgrade` refuses it without `-force`. `on.push.tags` is
 a glob matched before any expression runs, which is why `verify` checks the

@@ -93,12 +93,16 @@ func EffortRank(effort string) int {
 	return len(effortOrder)
 }
 
+// EffortKeySQL normalises an effort column the way EffortRank reads it, or
+// "XHigh" and " high" group apart from the levels they are.
+func EffortKeySQL(col string) string { return "lower(trim(" + col + "))" }
+
 // EffortOrderSQL renders the ranking as a SQL CASE expression over col, so the
 // ordering has one definition rather than a hand-kept SQL copy that drifts.
 // The column is lowered and trimmed as EffortRank does, or the two orderings
 // disagree on a row written "XHigh".
 func EffortOrderSQL(col string) string {
-	expr := "lower(trim(" + col + "))"
+	expr := EffortKeySQL(col)
 
 	var b strings.Builder
 	b.WriteString("CASE " + expr)

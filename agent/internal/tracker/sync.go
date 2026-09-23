@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -365,36 +364,17 @@ func floorStart(day string) (time.Time, bool) {
 // payload.
 const minGzipBytes = 1024
 
-// ReleaseVersion parses a vX.Y.Z release tag, the only form a release has.
-// A build from a working tree reports "<sha>-dirty" or "dev", which is not
-// something to upgrade to or compare against.
-func ReleaseVersion(v string) ([3]int, bool) {
-	var r [3]int
-	parts := strings.Split(strings.TrimPrefix(v, "v"), ".")
-	if len(parts) != len(r) {
-		return r, false
-	}
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || strings.Trim(p, "0123456789") != "" {
-			return r, false
-		}
-		r[i] = n
-	}
-	return r, true
-}
-
 // noteServerVersion warns once when the server is on a newer release than
 // this agent, which then collects with an older adapter set: smaller numbers,
 // not an error. A server behind the agent is the operator's upgrade, not this
 // machine's. It never refuses to run: an agent that stops uploading because it
 // is out of date turns a cosmetic problem into missing data.
 func (c *Client) noteServerVersion(server string) {
-	srv, ok := ReleaseVersion(server)
+	srv, ok := schema.ReleaseVersion(server)
 	if !ok || server == c.Version {
 		return
 	}
-	if own, isRelease := ReleaseVersion(c.Version); isRelease && slices.Compare(srv[:], own[:]) <= 0 {
+	if own, isRelease := schema.ReleaseVersion(c.Version); isRelease && slices.Compare(srv[:], own[:]) <= 0 {
 		return
 	}
 	if c.versionWarned.Swap(true) {

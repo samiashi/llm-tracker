@@ -85,17 +85,13 @@ func (d *DB) Breakdown(ctx context.Context, w Window, by string) ([]Group, error
 // absent from daily_rollup, where they would multiply its rows, so event_daily
 // cannot serve one, and one read from event under-reports every pruned day.
 
-// effortKey normalises an effort column the way EffortRank reads it, or
-// "XHigh" and " high" group apart from the levels they are.
-func effortKey(col string) string { return "lower(trim(" + col + "))" }
-
 // effortOrder sorts by schema.EffortRank, then breaks a tie as
 // EffortDisplayOrder does -- a level before the aliases that run at it -- then
 // by value, so ultracode and xhigh never swap places between two loads.
 func effortOrder(col string) string {
 	display := schema.EffortDisplayOrder()
 	var b strings.Builder
-	b.WriteString(schema.EffortOrderSQL(col) + ", CASE " + effortKey(col))
+	b.WriteString(schema.EffortOrderSQL(col) + ", CASE " + schema.EffortKeySQL(col))
 	for i, e := range display {
 		fmt.Fprintf(&b, " WHEN '%s' THEN %d", e, i)
 	}
@@ -218,7 +214,7 @@ var ErrUnknownDimension = errors.New("unknown dimension")
 // mapped through here rather than interpolated from the query string.
 var matrixDims = map[string]string{
 	"model":   "model",
-	"effort":  effortKey("effort"),
+	"effort":  schema.EffortKeySQL("effort"),
 	"source":  "source",
 	"surface": "surface",
 	"speed":   "speed",
