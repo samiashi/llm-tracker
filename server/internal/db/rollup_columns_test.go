@@ -7,9 +7,10 @@ import (
 	"testing"
 )
 
-// Prune's GROUP BY, the rollup table's key and the view every aggregate reads
-// must name the same columns: a migration that widens one alone aborts every
-// prune, as 00010 records.
+// Prune's GROUP BY, the rollup table's key, the day summary's and the view
+// every aggregate reads must name the same columns: a migration that widens
+// one alone aborts every prune, as 00010 records, or has the view union two
+// tables whose columns no longer line up.
 func TestRollupColumnsMatchTheSchema(t *testing.T) {
 	d := newDB(t)
 	key := strings.Split(rollupKey, ", ")
@@ -40,18 +41,20 @@ func TestRollupColumnsMatchTheSchema(t *testing.T) {
 		return out
 	}
 
-	var names, pk []string
-	for _, c := range columns("daily_rollup") {
-		names = append(names, c.name)
-		if c.pk > 0 {
-			pk = append(pk, c.name)
+	for _, table := range []string{"daily_rollup", "event_day"} {
+		var names, pk []string
+		for _, c := range columns(table) {
+			names = append(names, c.name)
+			if c.pk > 0 {
+				pk = append(pk, c.name)
+			}
 		}
-	}
-	if !slices.Equal(names, all) {
-		t.Errorf("daily_rollup columns %v, Prune writes %v", names, all)
-	}
-	if !slices.Equal(pk, key) {
-		t.Errorf("daily_rollup key %v, Prune groups by %v", pk, key)
+		if !slices.Equal(names, all) {
+			t.Errorf("%s columns %v, Prune writes %v", table, names, all)
+		}
+		if !slices.Equal(pk, key) {
+			t.Errorf("%s key %v, Prune groups by %v", table, pk, key)
+		}
 	}
 
 	var view []string

@@ -79,3 +79,25 @@ func TestPollQueriesNeverSortAllOfHistory(t *testing.T) {
 		})
 	}
 }
+
+// Invariant 5: the view must not pre-aggregate. Grouped inside the view, every
+// windowed query sorts its rows into a temp B-tree before its own aggregate
+// redoes the work -- 14x slower at a million events (see 00008). Totals has no
+// GROUP BY of its own, so any grouping in its plan is the view's.
+func TestTheViewHandsOverRowsUngrouped(t *testing.T) {
+	d := newDB(t)
+	var def string
+	if err := d.read.QueryRowContext(context.Background(),
+		`SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'event_daily'`).Scan(&def); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToUpper(def), "GROUP BY") {
+		t.Fatalf("event_daily aggregates at query time:\n%s", def)
+	}
+	for _, s := range explain(t, d, `SELECT `+totalsSelect+
+		` FROM event_daily WHERE day BETWEEN '2000-01-01' AND '2099-01-01'`) {
+		if strings.Contains(s.detail, "FOR GROUP BY") {
+			t.Fatalf("event_daily groups its rows before the caller does: %q", s.detail)
+		}
+	}
+}

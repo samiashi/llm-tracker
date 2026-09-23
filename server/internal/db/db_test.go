@@ -18,6 +18,8 @@ func newDB(t *testing.T) *DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
+	// Registered after Close, so it runs before it.
+	t.Cleanup(func() { checkSummary(t, d) })
 	return d
 }
 

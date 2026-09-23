@@ -59,9 +59,15 @@ wrong numbers, and the comment above the code says which.
    reads the _type_, so a field tagged `omitempty` cannot slip past by being
    unset.
 5. **Aggregate queries over the reporting window read the `event_daily` view,
-   never `event` directly.** The view unions live events with pruned-day
-   rollups, so retention stays invisible to them. The view must not
-   pre-aggregate. Three queries are exempt because they need something a
+   never `event` directly.** The view unions `event_day` -- the live events
+   summed per day and rollup key, kept by triggers on `event` -- with pruned-day
+   rollups, so retention stays invisible to them and no poll re-adds every
+   event. The view must not aggregate at query time, and `event_day` must
+   always equal a GROUP BY over `event`: its triggers add signed deltas and drop
+   a row only once every column is back to zero, since a re-key trigger can
+   delete a row before `event_day` has counted it. Every db test ends by
+   checking this, and a migration that rebuilds `event` must recreate the
+   triggers. Three queries are exempt because they need something a
    day-level rollup cannot hold — `Heatmap` (hour of day), `TopSessions`
    (session id) and `SourceHealth` (per-event timestamps) — and so see only
    what has not been rolled up, by design. Anything answering a windowed
