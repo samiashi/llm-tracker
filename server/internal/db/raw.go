@@ -125,9 +125,6 @@ func (d *DB) Heatmap(ctx context.Context, w Window) ([]HeatCell, int, error) {
 }
 
 // SessionRow is one session's totals.
-//
-// It carries no project path: the table does not show one, and every viewer
-// of the dashboard would receive every colleague's working directories.
 type SessionRow struct {
 	SessionID       string  `json:"session_id"`
 	Source          string  `json:"source"`

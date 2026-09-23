@@ -64,6 +64,29 @@ func TestIngestIsIdempotent(t *testing.T) {
 	}
 }
 
+// A project path names the developer's account and the client they work on,
+// and nothing ever read either column, so the server keeps neither.
+func TestEventsKeepNoProjectPathOrBranch(t *testing.T) {
+	d := newDB(t)
+	rows, err := d.read.Query(`SELECT name FROM pragma_table_info('event')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatal(err)
+		}
+		if name == "project_path" || name == "git_branch" {
+			t.Errorf("event has a %s column", name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Invariant 3: billed and rate-card spend are never summed.
 func TestBilledAndRateCardStaySeparate(t *testing.T) {
 	d := newDB(t)

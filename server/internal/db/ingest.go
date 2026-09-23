@@ -42,9 +42,9 @@ const upsertEvent = `
 		input_tokens, output_tokens, cache_read_tokens, cache_write_5m,
 		cache_write_1h, reasoning_tokens, web_search_calls, web_fetch_calls,
 		total_tokens, cost_basis, cost_usd, cost_source,
-		session_id, project_path, git_branch, is_subagent, received_at,
+		session_id, is_subagent, received_at,
 		speed, effort, inference_geo, agent_version, collector
-	) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+	) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
 	  WHERE NOT EXISTS (SELECT 1 FROM pruned_event WHERE id = ?)
 	ON CONFLICT(id) DO UPDATE SET
 		-- A stored total never falls, and the split is always one reading's.
@@ -70,8 +70,6 @@ const upsertEvent = `
 		model        = CASE WHEN ` + newerReading + ` THEN excluded.model        ELSE event.model        END,
 		endpoint     = CASE WHEN ` + newerReading + ` THEN excluded.endpoint     ELSE event.endpoint     END,
 		session_id   = CASE WHEN ` + newerReading + ` THEN excluded.session_id   ELSE event.session_id   END,
-		project_path = CASE WHEN ` + newerReading + ` THEN excluded.project_path ELSE event.project_path END,
-		git_branch   = CASE WHEN ` + newerReading + ` THEN excluded.git_branch   ELSE event.git_branch   END,
 		is_subagent  = CASE WHEN ` + newerReading + ` THEN excluded.is_subagent  ELSE event.is_subagent  END,
 		collector    = CASE WHEN ` + newerReading + ` THEN excluded.collector    ELSE event.collector    END,
 
@@ -216,7 +214,7 @@ func (d *DB) Ingest(ctx context.Context, b *schema.Batch) (*IngestResult, error)
 			u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWrite5mTokens,
 			u.CacheWrite1hTokens, u.ReasoningTokens, u.WebSearchCalls, u.WebFetchCalls,
 			u.TotalTokens(), string(e.CostBasis), cost, source,
-			e.SessionID, e.ProjectPath, e.GitBranch, boolInt(e.IsSubagent), now,
+			e.SessionID, boolInt(e.IsSubagent), now,
 			e.Speed, e.Effort, e.InferenceGeo, e.AgentVersion, e.Collector, e.ID)
 		if err != nil {
 			return nil, err

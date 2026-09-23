@@ -88,10 +88,6 @@ func unknownDimension[V any](param, got string, dims map[string]V) error {
 		strings.Join(slices.Sorted(maps.Keys(dims)), ", "))
 }
 
-// There is no breakdown by project or branch. Both are high-cardinality and
-// absent from daily_rollup, where they would multiply its rows, so event_daily
-// cannot serve one, and one read from event under-reports every pruned day.
-
 // effortOrder sorts by schema.EffortRank, then breaks a tie as
 // EffortDisplayOrder does -- a level before the aliases that run at it -- then
 // by value, so ultracode and xhigh never swap places between two loads.

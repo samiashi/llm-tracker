@@ -2,8 +2,6 @@ package db
 
 import (
 	"context"
-	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/samiashi/llm-tracker/schema"
@@ -86,16 +84,6 @@ func TestSessionsCarryAndRankByUnknownBasisSpend(t *testing.T) {
 	}
 	if rows[0].BilledUSD != 0 || rows[0].RateCardUSD != 0 {
 		t.Fatalf("unknown-basis spend leaked into another figure: %+v", rows[0])
-	}
-}
-
-func TestTopSessionsPublishNoProjectPath(t *testing.T) {
-	typ := reflect.TypeFor[SessionRow]()
-	for i := range typ.NumField() {
-		name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
-		if strings.Contains(name, "project") || strings.Contains(name, "path") {
-			t.Fatalf("SessionRow.%s is published as %q", typ.Field(i).Name, name)
-		}
 	}
 }
 

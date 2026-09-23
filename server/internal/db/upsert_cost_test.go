@@ -157,36 +157,34 @@ func TestANewerCollectorCorrectsTheStoredReading(t *testing.T) {
 	wrong := ev("c", 1_000_000, schema.CostRateCard)
 	wrong.Collector, wrong.TS = 7, at
 	wrong.Model, wrong.Effort, wrong.Speed = "claude-sonnet-5", "high", ""
-	wrong.SessionID, wrong.ProjectPath, wrong.GitBranch = "s-wrong", "/wrong", "b-wrong"
+	wrong.SessionID = "s-wrong"
 	ingest(t, d, wrong)
 
 	fixed := wrong
 	fixed.Collector, fixed.TS = 8, at.Add(-24*time.Hour)
 	fixed.Model, fixed.Effort = "claude-opus-5", "xhigh"
-	fixed.SessionID, fixed.ProjectPath, fixed.GitBranch = "s-right", "/right", "b-right"
+	fixed.SessionID = "s-right"
 	fixed.IsSubagent = true
 	if res := ingest(t, d, fixed); res.EventsStored != 1 {
 		t.Fatalf("stored %d: an equal reading from a newer collector must be taken", res.EventsStored)
 	}
 
 	type row struct {
-		model, effort, session, project, branch, day string
-		subagent, collector                          int
+		model, effort, session, day string
+		subagent, collector         int
 	}
 	read := func() row {
 		t.Helper()
 		var r row
 		if err := d.read.QueryRowContext(ctx, `
-			SELECT model, effort, session_id, project_path, git_branch, day,
-			       is_subagent, collector
+			SELECT model, effort, session_id, day, is_subagent, collector
 			FROM event WHERE id = 'c'`).Scan(&r.model, &r.effort, &r.session,
-			&r.project, &r.branch, &r.day, &r.subagent, &r.collector); err != nil {
+			&r.day, &r.subagent, &r.collector); err != nil {
 			t.Fatal(err)
 		}
 		return r
 	}
-	want := row{"claude-opus-5", "xhigh", "s-right", "/right", "b-right",
-		fixed.TS.UTC().Format("2006-01-02"), 1, 8}
+	want := row{"claude-opus-5", "xhigh", "s-right", fixed.TS.UTC().Format("2006-01-02"), 1, 8}
 	if got := read(); got != want {
 		t.Fatalf("stored %+v, want the newer collector's reading %+v", got, want)
 	}

@@ -306,7 +306,7 @@ provision but a disk.
   what it was priced from, which is what makes running beside ingest safe.
   Rolled-up days keep the prices they had: a rollup keeps sums, not the
   dimensions pricing needs.
-- **Forward only in practice.** `00013`, `00016` and `00020` delete data
+- **Forward only in practice.** `00013`, `00016`, `00020` and `00021` delete data
   their Down cannot restore, and `00016` installs triggers that keep retiring
   re-keyed rows as agents upgrade, so never plan a rollback that crosses one;
   roll forward with a new migration. And never edit one that has shipped.
