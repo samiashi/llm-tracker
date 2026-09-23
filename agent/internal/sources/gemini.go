@@ -77,7 +77,7 @@ func (a Gemini) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			info, ierr := d.Info()
 			if ierr != nil {
 				res.Errors = append(res.Errors, ierr)
-				return nil //nolint:nilerr
+				return nil
 			}
 			if !info.Mode().IsRegular() {
 				return nil
@@ -89,10 +89,10 @@ func (a Gemini) Collect(ctx context.Context, c *Ctx) (Result, error) {
 				return nil
 			}
 
-			b, rerr := os.ReadFile(path) //nolint:gosec // bounded above; root is a constant
+			b, rerr := os.ReadFile(path)
 			if rerr != nil {
 				res.Errors = append(res.Errors, rerr)
-				return nil //nolint:nilerr
+				return nil
 			}
 			res.BytesRead += int64(len(b))
 

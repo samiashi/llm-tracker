@@ -138,7 +138,7 @@ func (s *Store) CommitFile(
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback()
 
 	n, err := putAllTx(ctx, tx, events)
 	if err != nil {

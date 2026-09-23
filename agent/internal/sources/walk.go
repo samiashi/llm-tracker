@@ -52,7 +52,7 @@ func tailJSONL(ctx context.Context, st *store.Store, path string, fn func(at int
 	if err != nil {
 		return 0, 0, 0, false, err
 	}
-	defer f.Close() //nolint:errcheck
+	defer f.Close()
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
 		return 0, 0, 0, false, err
 	}

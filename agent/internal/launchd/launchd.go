@@ -74,7 +74,7 @@ func InstalledDataDir() string {
 	if err != nil {
 		return ""
 	}
-	b, err := os.ReadFile(p) //nolint:gosec // our own plist, at a fixed path
+	b, err := os.ReadFile(p)
 	if err != nil {
 		return ""
 	}

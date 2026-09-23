@@ -25,7 +25,7 @@ type Lock struct{ f *os.File }
 // drops it when the process dies and a crash leaves nothing stale.
 func Acquire(dataDir string) (*Lock, error) {
 	path := filepath.Join(dataDir, "agent.lock")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // fixed name under the data dir
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}

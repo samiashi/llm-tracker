@@ -106,7 +106,7 @@ func TestALockedDataDirSaysHowToRestartTheCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lock.Release() //nolint:errcheck
+	defer lock.Release()
 
 	_, err = agentRun(t, "resend", "-data", dir)
 	if err == nil {

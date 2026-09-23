@@ -117,7 +117,7 @@ func run() error {
 		if lerr != nil {
 			return lerr
 		}
-		defer lf.Close() //nolint:errcheck
+		defer lf.Close()
 		out = lf
 	}
 	log := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: level}))

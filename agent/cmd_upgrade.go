@@ -171,7 +171,7 @@ func upgradeVerdict(running, latest string, force bool) (replace bool, err error
 // The digest file is `<hex>  <name>`, as `shasum -a 256` writes it. Only the
 // hex is used: the name in it is the release's, not the staged temp path.
 func verifySHA256(path, sumFile string) error {
-	raw, err := os.ReadFile(sumFile) //nolint:gosec // path is derived, not user input
+	raw, err := os.ReadFile(sumFile)
 	if err != nil {
 		return fmt.Errorf("reading checksum: %w", err)
 	}
@@ -180,11 +180,11 @@ func verifySHA256(path, sumFile string) error {
 		return fmt.Errorf("checksum file is not a sha256 digest")
 	}
 
-	f, err := os.Open(path) //nolint:gosec // path is derived, not user input
+	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close() //nolint:errcheck
+	defer f.Close()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {

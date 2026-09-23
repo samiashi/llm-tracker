@@ -54,7 +54,7 @@ func (s *Store) AccountWindows(ctx context.Context) ([]AccountWindow, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close() //nolint:errcheck
+	defer rows.Close()
 	var out []AccountWindow
 	for rows.Next() {
 		var w AccountWindow

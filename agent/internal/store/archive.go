@@ -56,7 +56,7 @@ func putAllTx(ctx context.Context, tx *sql.Tx, items []Record) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer stmt.Close() //nolint:errcheck
+	defer stmt.Close()
 
 	n := 0
 	for _, it := range items {

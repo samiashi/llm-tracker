@@ -110,7 +110,6 @@ func TestUnknownModelIsUnpricedNotFree(t *testing.T) {
 	}
 }
 
-//nolint:unused // kept as a guard on the TTL split staying meaningful
 func TestCacheTTLsPricedDifferently(t *testing.T) {
 	pt := DefaultPriceTable()
 	short := &Event{Model: "claude-opus-5", Usage: Usage{CacheWrite5mTokens: 1_000_000}}

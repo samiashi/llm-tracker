@@ -52,7 +52,7 @@ func (s *Store) ResetCursors(ctx context.Context, sc Scope) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback() //nolint:errcheck
+	defer tx.Rollback()
 	n, err := deleteScope(ctx, tx, sc)
 	if err != nil {
 		return n, err

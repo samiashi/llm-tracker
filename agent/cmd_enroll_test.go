@@ -25,7 +25,7 @@ func fakeGH(t *testing.T) {
 [ "$*" = "auth token --hostname github.com" ] && [ "$GH_HOST" = "github.com" ] ||
   { echo "unexpected: gh $* (GH_HOST=$GH_HOST)" >&2; exit 2; }
 echo ` + colleagueGitHubToken + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil { //nolint:gosec // an executable stub
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -162,7 +162,7 @@ func TestEnrollPassesOnWhyGHHasNoToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	script := "#!/bin/sh\necho 'no oauth token found for github.com' >&2\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil { //nolint:gosec // an executable stub
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)

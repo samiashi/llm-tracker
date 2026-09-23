@@ -47,11 +47,11 @@ func installBinary(src, dataDir string) (string, error) {
 		return dst, nil
 	}
 
-	in, err := os.Open(src) //nolint:gosec // our own executable
+	in, err := os.Open(src)
 	if err != nil {
 		return "", err
 	}
-	defer in.Close() //nolint:errcheck
+	defer in.Close()
 
 	// Staged then renamed, so a failure part-way through cannot leave a
 	// half-written binary where launchd will try to start one.
