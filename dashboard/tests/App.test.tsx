@@ -4,6 +4,8 @@ import App from "@/App";
 import type { Totals } from "@/api";
 import { utcMidnightAt } from "@/format";
 
+vi.mock("recharts", async (real) => (await import("./recharts")).rechartsDouble(real));
+
 // Rendering the whole page catches what the pure-function tests cannot: a
 // runtime error that leaves a blank page while every asset still returns 200.
 
@@ -510,8 +512,12 @@ describe("a failed request is never shown as an empty range", () => {
     window.history.replaceState(null, "", "/?from=2026-09-01&to=2026-09-22");
     render(<App />);
     await loaded();
-    expect(document.querySelectorAll('[aria-label*="per day"]')).toHaveLength(0);
-    expect(card("Billable input & output").textContent).toContain("Could not load");
+    for (const title of ["Billable input & output", "Cache traffic"]) {
+      expect(within(card(title)).queryByRole("img")).toBeNull();
+      expect(card(title).textContent).toContain("Could not load");
+    }
+    // The model chart has its own request, which did not fail.
+    expect(within(card("Model mix over time")).getByRole("img")).toBeTruthy();
   });
 
   it("shows subagent share as unknown, not 0%, when its request failed", async () => {
