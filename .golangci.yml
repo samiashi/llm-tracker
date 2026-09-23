@@ -25,6 +25,7 @@ linters:
     - gosec
     - noctx
     - contextcheck
+    - nolintlint    # suppressions that no longer suppress anything
 
   settings:
     errcheck:
@@ -56,9 +57,9 @@ linters:
       # user's home, the agent's own executable, or the operator's config.
       # G204: no shell is invoked, and every exec argv is built from constants,
       # os.Getuid() and paths the agent derives itself.
-      # G201/G202: the only values formatted into SQL are a package constant
-      # table name and dimensions resolved through an allow-list; every value
-      # from a request is bound.
+      # G201/G202: the only values formatted into SQL are package constants --
+      # column lists and placeholders -- and dimensions resolved through an
+      # allow-list; every value from a request is bound.
       # G124: Secure is set from config rather than a literal, which the rule
       # reads as absent. The cookies carry it whenever the base URL is https.
       - linters: [gosec]
