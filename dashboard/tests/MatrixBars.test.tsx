@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MatrixBars } from "@/components/MatrixBars";
 import type { MatrixCell } from "@/api";
+import { OTHER_FILL, SLOTS } from "@/palette";
 
 afterEach(cleanup);
 
@@ -19,16 +20,42 @@ const cell = (row: string, col: string, tokens: number, extra: Partial<MatrixCel
 });
 
 const legend = () => [...document.querySelectorAll(".legend .pill")].map((e) => e.textContent);
+/** Each legend entry's colour, by its label. */
+const colours = () =>
+  Object.fromEntries(
+    [...document.querySelectorAll<HTMLElement>(".legend .pill")].map((p) => [
+      p.textContent,
+      p.querySelector<HTMLElement>(".dot")!.style.background,
+    ]),
+  );
 
 describe("MatrixBars", () => {
+  // By volume the order would be high, ultra, low: only the scale puts low first.
   it("ranks an effort level where the scale puts it, whatever its case or spacing", () => {
     render(
       <MatrixBars
         colOrder={ORDER}
-        cells={[cell("m", "low", 10), cell("m", "High", 10), cell("m", " ultra ", 10)]}
+        cells={[cell("m", "ultra", 20), cell("m", "High", 30), cell("m", " low ", 10)]}
       />,
     );
     expect(legend()).toEqual(["low", "high", "ultra"]);
+  });
+
+  // Invariant 3: each cell is $1 billed and $2 rate card.
+  it("heads a model with its billed spend alone, never adding the rate card", () => {
+    render(<MatrixBars colOrder={ORDER} cells={[cell("m", "high", 10), cell("m", "low", 10)]} />);
+    expect(document.querySelector(".mrow .cost")?.textContent).toBe("$2.00 billed");
+  });
+
+  // Slots are assigned by position and never cycled: past the last, one neutral "other".
+  it("never gives two columns of a nominal dimension one colour", () => {
+    const cols = Array.from({ length: SLOTS.length + 2 }, (_, i) => `c${i}`);
+    render(<MatrixBars cells={cols.map((c, i) => cell("m", c, 100 - i))} />);
+    const dots = Object.values(colours());
+    expect(legend()).toHaveLength(SLOTS.length + 1);
+    expect(legend().at(-1)).toBe("other");
+    expect(new Set(dots).size).toBe(dots.length);
+    expect(dots.at(-1)).toBe(OTHER_FILL);
   });
 
   it("counts one level spelled two ways as one segment", () => {
