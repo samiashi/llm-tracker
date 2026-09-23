@@ -37,7 +37,6 @@ type copilotEvent struct {
 	RequestID string `json:"requestId"`
 	ID        string `json:"id"`
 	Model     string `json:"model"`
-	CWD       string `json:"cwd"`
 
 	Usage *openAIUsage `json:"usage"`
 	// Some builds nest usage under a response or turn object.
@@ -86,7 +85,7 @@ func (a Copilot) Collect(ctx context.Context, c *Ctx) (Result, error) {
 				TS: pickTime(e.Timestamp, e.CreatedAt), MachineID: c.MachineID,
 				Provider: "github", Model: model,
 				Usage:     usage.normalise(),
-				SessionID: e.SessionID, ProjectPath: e.CWD,
+				SessionID: e.SessionID,
 				CostBasis: schema.CostUnknown,
 			})
 		})

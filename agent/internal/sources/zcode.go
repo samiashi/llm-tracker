@@ -33,7 +33,6 @@ type zcodeLine struct {
 	RequestID string       `json:"request_id"`
 	SessionID string       `json:"session_id"`
 	Model     string       `json:"model"`
-	CWD       string       `json:"cwd"`
 	Usage     *openAIUsage `json:"usage"`
 }
 
@@ -63,7 +62,7 @@ func (a ZCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			TS: pickTime(l.Timestamp, l.CreatedAt), MachineID: c.MachineID,
 			Provider: "zai", Model: model, Endpoint: "zai",
 			Usage:     l.Usage.normalise(),
-			SessionID: l.SessionID, ProjectPath: l.CWD,
+			SessionID: l.SessionID,
 			CostBasis: schema.CostBilled,
 		})
 	})

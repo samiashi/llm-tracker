@@ -36,7 +36,6 @@ type dshLine struct {
 	RequestID string `json:"request_id"`
 	SessionID string `json:"session_id"`
 	Model     string `json:"model"`
-	CWD       string `json:"cwd"`
 
 	Usage *openAIUsage `json:"usage"`
 	// Some builds nest the API response rather than lifting usage out of it.
@@ -81,7 +80,7 @@ func (a DeepSeekHarness) Collect(ctx context.Context, c *Ctx) (Result, error) {
 				TS: pickTime(l.Timestamp, l.CreatedAt), MachineID: c.MachineID,
 				Provider: "deepseek", Model: model, Endpoint: "deepseek",
 				Usage:     usage.normalise(),
-				SessionID: l.SessionID, ProjectPath: l.CWD,
+				SessionID: l.SessionID,
 				CostBasis: schema.CostBilled,
 			})
 		})

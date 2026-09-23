@@ -55,7 +55,7 @@ func TestNoWireTypeCanCarryContent(t *testing.T) {
 		"ts": true, "machine_id": true, "account_ref": true, "provider": true,
 		"model": true, "endpoint": true, "usage": true, "cost_basis": true,
 		"native_cost_usd": true, "inference_geo": true, "speed": true, "effort": true,
-		"session_id": true, "project_path": true, "git_branch": true,
+		"session_id":  true,
 		"is_subagent": true, "agent_version": true,
 		// The collector version that read the event: an integer.
 		"collector": true,

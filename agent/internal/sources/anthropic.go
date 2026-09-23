@@ -28,8 +28,6 @@ type anthropicLine struct {
 
 	UUID        string `json:"uuid"`
 	Timestamp   string `json:"timestamp"`
-	CWD         string `json:"cwd"`
-	GitBranch   string `json:"gitBranch"`
 	Version     string `json:"version"`
 	Entrypoint  string `json:"entrypoint"`
 	IsSidechain bool   `json:"isSidechain"`
@@ -175,22 +173,20 @@ func (l *anthropicLine) toEvent(src schema.Source, c *Ctx, accountRef string) (s
 	}
 
 	return schema.Event{
-		V:           schema.Version,
-		ID:          schema.MakeID(src, nid),
-		NativeID:    nid,
-		Source:      src,
-		Surface:     surfaceFor(l.Entrypoint),
-		TS:          parseTS(l.Timestamp),
-		MachineID:   c.MachineID,
-		AccountRef:  accountRef,
-		Provider:    inferProvider(l.Message.Model),
-		Model:       l.Message.Model,
-		Usage:       usage,
-		SessionID:   l.sessionID(),
-		ProjectPath: l.CWD,
-		GitBranch:   l.GitBranch,
-		IsSubagent:  l.IsSidechain,
-		CostBasis:   basis,
+		V:          schema.Version,
+		ID:         schema.MakeID(src, nid),
+		NativeID:   nid,
+		Source:     src,
+		Surface:    surfaceFor(l.Entrypoint),
+		TS:         parseTS(l.Timestamp),
+		MachineID:  c.MachineID,
+		AccountRef: accountRef,
+		Provider:   inferProvider(l.Message.Model),
+		Model:      l.Message.Model,
+		Usage:      usage,
+		SessionID:  l.sessionID(),
+		IsSubagent: l.IsSidechain,
+		CostBasis:  basis,
 		// "not_available" is the absent marker, not a geography.
 		InferenceGeo: strings.TrimSuffix(u.InferenceGeo, "not_available"),
 		Speed:        u.Speed,

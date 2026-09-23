@@ -47,7 +47,6 @@ type codexUsageRecord struct {
 
 type codexTurnContext struct {
 	Model  string `json:"model"`
-	CWD    string `json:"cwd"`
 	Effort string `json:"effort"`
 	// Newer builds carry the same value under the collaboration settings.
 	CollaborationMode *struct {
@@ -74,7 +73,6 @@ type codexSessionMeta struct {
 	CLIVersion    string `json:"cli_version"`
 	ModelProvider string `json:"model_provider"`
 	ThreadSource  string `json:"thread_source"`
-	CWD           string `json:"cwd"`
 }
 
 type codexTokenCount struct {
@@ -91,7 +89,6 @@ type codexTokenCount struct {
 type fileCtx struct {
 	Model      string `json:"model"`
 	Provider   string `json:"provider"`
-	CWD        string `json:"cwd"`
 	Originator string `json:"originator"`
 	Version    string `json:"version"`
 	Subagent   bool   `json:"subagent"`
@@ -203,9 +200,6 @@ func (a Codex) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			// The session a thread belongs to, which is also what its
 			// token_usage_record lines carry: a subagent shares its root's.
 			fc.SessionID = cmp.Or(m.SessionID, m.ID)
-			if m.CWD != "" {
-				fc.CWD = m.CWD
-			}
 			stageFileCtx(c, path, *fc)
 
 		case "turn_context":
@@ -213,9 +207,6 @@ func (a Codex) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			if json.Unmarshal(l.Payload, &t) == nil {
 				if t.Model != "" {
 					fc.Model = t.Model
-				}
-				if t.CWD != "" {
-					fc.CWD = t.CWD
 				}
 				if e := t.effort(); e != "" {
 					fc.Effort = e
@@ -306,7 +297,6 @@ func codexEvent(c *Ctx, fc *fileCtx, acct, nativeID, sessionID string, u codexTo
 		Endpoint:     codexEndpoint(fc.Provider),
 		Usage:        usage,
 		SessionID:    sessionID,
-		ProjectPath:  fc.CWD,
 		IsSubagent:   fc.Subagent,
 		CostBasis:    basis,
 		Effort:       fc.Effort,

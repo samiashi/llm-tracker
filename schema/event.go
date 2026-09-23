@@ -128,9 +128,6 @@ type Event struct {
 	NativeCostUSD *float64 `json:"native_cost_usd,omitempty"`
 
 	SessionID string `json:"session_id,omitempty"`
-	// ProjectPath is the working directory. It is a path, not file contents.
-	ProjectPath string `json:"project_path,omitempty"`
-	GitBranch   string `json:"git_branch,omitempty"`
 	// IsSubagent marks sidechain/subagent traffic. Worth isolating: Claude
 	// Code's cleanup deletes parent transcripts at 30 days but leaves
 	// subagents/ behind, so these outlive the sessions they belong to.

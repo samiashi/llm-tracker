@@ -61,7 +61,7 @@ Claude Code deletes its transcripts after 30 days. The agent's archive in
 Token counts, with what is needed to break them down:
 
 - model, provider and timestamps;
-- session IDs, project paths and git branches;
+- session IDs;
 - the hostname and a hash of the hardware ID;
 - the email of each signed-in account.
 

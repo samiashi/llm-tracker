@@ -69,7 +69,6 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 		       json_extract(data,'$.providerID'),
 		       json_extract(data,'$.variant'),
 		       json_extract(data,'$.agent'),
-		       json_extract(data,'$.path.cwd'),
 		       json_extract(data,'$.cost'),
 		       json_extract(data,'$.tokens.input'),
 		       json_extract(data,'$.tokens.output'),
@@ -91,14 +90,13 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			id, sessionID                   string
 			updated                         int64
 			model, provider, variant, agent sql.NullString
-			dir                             sql.NullString
 			cost                            sql.NullFloat64
 			tin, tout, treason, tcr, tcw    sql.NullInt64
 			created                         sql.NullInt64
 		)
 		res.Scanned++
 		if err := rows.Scan(&id, &sessionID, &updated, &model, &provider, &variant,
-			&agent, &dir, &cost, &tin, &tout, &treason, &tcr, &tcw, &created); err != nil {
+			&agent, &cost, &tin, &tout, &treason, &tcr, &tcw, &created); err != nil {
 			res.Errors = append(res.Errors, err)
 			continue
 		}
@@ -142,12 +140,11 @@ func (a OpenCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			// Endpoint carries providerID so pricing keys on the provider that
 			// actually served the tokens rather than on a model name that
 			// several providers resell.
-			Endpoint:    provider.String,
-			Effort:      variant.String,
-			Usage:       usage,
-			SessionID:   sessionID,
-			ProjectPath: dir.String,
-			IsSubagent:  agent.String != "" && agent.String != "build",
+			Endpoint:   provider.String,
+			Effort:     variant.String,
+			Usage:      usage,
+			SessionID:  sessionID,
+			IsSubagent: agent.String != "" && agent.String != "build",
 			// opencode talks to provider APIs with real keys, so this is
 			// metered spend rather than seat usage.
 			CostBasis: schema.CostBilled,

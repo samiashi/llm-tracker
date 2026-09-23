@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"os"
 	"strings"
 
 	"github.com/samiashi/llm-tracker/schema"
@@ -102,24 +101,7 @@ func (a Kimi) Collect(ctx context.Context, c *Ctx) (Result, error) {
 			Usage: usage, SessionID: w.SessionID,
 			// No detected account covers Moonshot, so whether this ran on a
 			// subscription or a metered key is unknown.
-			ProjectPath: sessionDirOf(path), CostBasis: schema.CostUnknown,
+			CostBasis: schema.CostUnknown,
 		})
 	})
-}
-
-// sessionDirOf returns the session directory holding a wire log, which is the
-// closest thing to a project identifier Kimi exposes without reading content.
-func sessionDirOf(path string) string {
-	dir := path
-	for i := 0; i < 2; i++ {
-		dir = parentDir(dir)
-	}
-	return dir
-}
-
-func parentDir(p string) string {
-	if i := strings.LastIndex(p, string(os.PathSeparator)); i > 0 {
-		return p[:i]
-	}
-	return p
 }
