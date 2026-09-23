@@ -13,7 +13,6 @@ afterEach(() => {
 // Twelve rows, four more than a list shows in the grid.
 const models = Array.from({ length: 12 }, (_, i) => ({
   key: `model-${i + 1}`,
-  label: "",
   totals: { total_tokens: 1200 - i * 100 },
 })) as unknown as Group[];
 

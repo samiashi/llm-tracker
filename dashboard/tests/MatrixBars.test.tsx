@@ -14,7 +14,6 @@ const cell = (row: string, col: string, tokens: number, extra: Partial<MatrixCel
   billed_usd: 1,
   rate_card_usd: 2,
   unknown_basis_usd: 0,
-  events: 1,
   ...extra,
 });
 

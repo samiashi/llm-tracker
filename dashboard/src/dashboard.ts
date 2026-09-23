@@ -180,7 +180,6 @@ export async function loadDashboard(filter: Filter, signal: AbortSignal): Promis
     modelEffort: matrix.cells,
     modelEffortOrder: matrix.col_order,
     compare: valueOr(r.compare, {
-      current: summary.totals,
       previous: summary.totals,
       previous_from: "",
       previous_to: "",

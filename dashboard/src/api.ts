@@ -20,7 +20,7 @@ export type Totals = {
   unpriced_tokens: number;
 };
 
-export type Group = { key: string; label?: string; totals: Totals };
+export type Group = { key: string; totals: Totals };
 export type Daily = { day: string; totals: Totals };
 
 /** `history_*_day` are UTC days, like every day the server returns. */
@@ -80,7 +80,6 @@ export type MatrixCell = {
   billed_usd: number;
   rate_card_usd: number;
   unknown_basis_usd: number;
-  events: number;
 };
 
 /** Why a detected harness has no adapter. Widened for forward compatibility. */
@@ -100,8 +99,8 @@ export type UnknownRow = {
 /** The range every view shares: two UTC days, inclusive. */
 export type Filter = { from: string; to: string; person?: string };
 
+/** The prior window of equal length; the current one is the summary's. */
 export type Compare = {
-  current: Totals;
   previous: Totals;
   previous_from: string;
   previous_to: string;
@@ -117,7 +116,6 @@ export type AgentRow = {
   hostname: string;
   person: string;
   agent_version: string;
-  first_seen: number;
   last_sync: number;
   events: number;
 };

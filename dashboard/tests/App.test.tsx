@@ -21,7 +21,7 @@ const totals: Totals = {
   unpriced_tokens: 0,
 };
 
-const group = (key: string, t: object = totals) => ({ key, label: "", totals: t });
+const group = (key: string, t: object = totals) => ({ key, totals: t });
 
 const session = {
   session_id: "s1",
@@ -63,7 +63,6 @@ function mockFetch(over: Record<string, Reply> = {}) {
       return ok({ totals, history_first_day: "2026-09-01", history_last_day: "2026-09-22" });
     if (url.includes("/v1/compare"))
       return ok({
-        current: totals,
         previous: totals,
         previous_from: "2026-08-01",
         previous_to: "2026-08-31",
@@ -81,7 +80,7 @@ function mockFetch(over: Record<string, Reply> = {}) {
             tokens: 500,
             billed_usd: 1,
             rate_card_usd: 2,
-            events: 5,
+            unknown_basis_usd: 0,
           },
         ],
         col_order: ["low", "medium", "high"],
@@ -99,7 +98,6 @@ function mockFetch(over: Record<string, Reply> = {}) {
             hostname: "mac",
             person: "a@b.c",
             agent_version: "v1.0.0",
-            first_seen: 1,
             last_sync: 1,
             events: 3,
           },
@@ -328,7 +326,6 @@ describe("the change against the prior period", () => {
           ok({ totals, history_first_day: "2026-08-10", history_last_day: "2026-09-22" }),
         "/v1/compare": () =>
           ok({
-            current: totals,
             previous: half,
             previous_from: "2026-07-24",
             previous_to: "2026-08-22",
