@@ -142,12 +142,12 @@ type SessionRow struct {
 	LastSeen        int64   `json:"last_seen"`
 }
 
+// sessionsList is how many sessions TopSessions returns.
+var sessionsList = listLen{def: 10, max: 100}
+
 // TopSessions ranks sessions by cost.
 func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow, error) {
 	w = w.Normalise()
-	if limit <= 0 || limit > 100 {
-		limit = 10
-	}
 	where, args := w.where("")
 
 	// One pass over the range, grouped as finely as each session's dominant
@@ -203,7 +203,7 @@ func (d *DB) TopSessions(ctx context.Context, w Window, limit int) ([]SessionRow
 		         a.session_id, a.source
 		LIMIT ?`
 
-	rows, err := d.read.QueryContext(ctx, q, append(args, limit)...)
+	rows, err := d.read.QueryContext(ctx, q, append(args, sessionsList.of(limit))...)
 	if err != nil {
 		return nil, err
 	}

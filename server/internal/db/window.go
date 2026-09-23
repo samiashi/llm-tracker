@@ -52,3 +52,15 @@ func personArgs(person string) []any {
 	}
 	return []any{person, ref}
 }
+
+// listLen is a list's length when a request names none, and the most one may
+// name. The handlers pass 0 for an absent parameter, so each default and cap
+// is written once, here.
+type listLen struct{ def, max int }
+
+func (l listLen) of(n int) int {
+	if n <= 0 {
+		return l.def
+	}
+	return min(n, l.max)
+}

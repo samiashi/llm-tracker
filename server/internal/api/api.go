@@ -153,7 +153,7 @@ func (s *Server) handleDaily(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMatrix(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	res, err := s.DB.Matrix(r.Context(), window(r),
-		q.Get("rows"), q.Get("cols"), atoiOr(q.Get("limit"), 6))
+		q.Get("rows"), q.Get("cols"), atoi(q.Get("limit")))
 	if err != nil {
 		if errors.Is(err, db.ErrUnknownDimension) {
 			writeErr(w, http.StatusBadRequest, err)
@@ -250,7 +250,7 @@ func (s *Server) handleHeatmap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTopSessions(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.DB.TopSessions(r.Context(), window(r), atoiOr(r.URL.Query().Get("limit"), 8))
+	rows, err := s.DB.TopSessions(r.Context(), window(r), atoi(r.URL.Query().Get("limit")))
 	if err != nil {
 		s.writeInternal(w, "topSessions", err)
 		return
@@ -259,7 +259,7 @@ func (s *Server) handleTopSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDailyByModel(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.DB.DailyByModel(r.Context(), window(r), atoiOr(r.URL.Query().Get("top"), 5))
+	rows, err := s.DB.DailyByModel(r.Context(), window(r), atoi(r.URL.Query().Get("top")))
 	if err != nil {
 		s.writeInternal(w, "dailyByModel", err)
 		return
@@ -304,11 +304,11 @@ func safeDatePart(v string) string {
 	return v
 }
 
-func atoiOr(s string, def int) int {
-	if n, err := strconv.Atoi(s); err == nil && n > 0 {
-		return n
-	}
-	return def
+// atoi reads a list length, 0 when absent or unreadable: the db owns each
+// list's default and cap.
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
 }
 
 func (s *Server) handleSourceHealth(w http.ResponseWriter, r *http.Request) {

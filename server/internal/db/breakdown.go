@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/samiashi/llm-tracker/schema"
@@ -68,17 +70,29 @@ var breakdownDims = map[string]struct{ expr, join, label string }{
 	"model":   {"event.model", "", "event.provider"},
 	"source":  {"event.source", "", "event.surface"},
 	"surface": {"event.surface", "", ""},
-	// Main-thread work apart from subagent fan-out.
-	"origin": {"CASE WHEN event.is_subagent THEN 'subagent' ELSE 'main thread' END", "", ""},
+	"origin":  {origin("event."), "", ""},
+}
+
+// origin separates main-thread work from subagent fan-out, under the labels
+// the breakdown and the CSV share.
+func origin(col string) string {
+	return "CASE WHEN " + col + "is_subagent THEN 'subagent' ELSE 'main' END"
 }
 
 // Breakdown groups a window by one allow-listed dimension, largest first.
 func (d *DB) Breakdown(ctx context.Context, w Window, by string) ([]Group, error) {
 	dim, ok := breakdownDims[by]
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownDimension, by)
+		return nil, unknownDimension("by", by, breakdownDims)
 	}
 	return d.breakdown(ctx, w, dim.expr, dim.join, dim.label)
+}
+
+// unknownDimension names the request parameter, the value it carried and the
+// values it takes, which is everything the caller needs to correct it.
+func unknownDimension[V any](param, got string, dims map[string]V) error {
+	return fmt.Errorf("%w %q for %s; accepted: %s", ErrUnknownDimension, got, param,
+		strings.Join(slices.Sorted(maps.Keys(dims)), ", "))
 }
 
 // There is no breakdown by project or branch. Both are high-cardinality and
@@ -106,15 +120,15 @@ type ModelDay struct {
 	Tokens int64  `json:"tokens"`
 }
 
+// modelSeries is how many models DailyByModel draws.
+var modelSeries = listLen{def: 6, max: 8}
+
 // DailyByModel returns a per-day series for the busiest models. The rest are
 // left out, not folded into an "other" band: the chart does not stack, so it
 // never claims to cover every token, and the model breakdown beside it lists
 // them all.
 func (d *DB) DailyByModel(ctx context.Context, w Window, top int) ([]ModelDay, error) {
 	w = w.Normalise()
-	if top <= 0 || top > 8 {
-		top = 6
-	}
 	where, args := w.where("")
 	q := `
 		WITH ranked AS (
@@ -126,7 +140,7 @@ func (d *DB) DailyByModel(ctx context.Context, w Window, top int) ([]ModelDay, e
 		FROM event_daily WHERE ` + where + `
 		  AND model IN (SELECT model FROM ranked)
 		GROUP BY 1, 2 ORDER BY 1, 2`
-	qargs := append(append([]any{}, args...), top)
+	qargs := append(append([]any{}, args...), modelSeries.of(top))
 	qargs = append(qargs, args...)
 	rows, err := d.read.QueryContext(ctx, q, qargs...)
 	if err != nil {
@@ -172,7 +186,7 @@ func (d *DB) Export(ctx context.Context, w Window) ([]ExportRow, error) {
 	// basis, never seat usage added to metered spend.
 	rows, err := d.read.QueryContext(ctx, `
 		SELECT e.day, COALESCE(NULLIF(a.email,''), e.account_ref), e.source, e.model,
-		       e.effort, CASE WHEN e.is_subagent THEN 'subagent' ELSE 'main' END,
+		       e.effort, `+origin("e.")+`,
 		       SUM(e.total_tokens), SUM(e.input_tokens), SUM(e.output_tokens),
 		       SUM(e.cache_read_tokens), SUM(e.cost_usd), e.cost_basis, SUM(e.events),
 		       SUM(CASE WHEN e.cost_source = 'unpriced' THEN e.total_tokens ELSE 0 END)
@@ -222,6 +236,9 @@ var matrixDims = map[string]string{
 	"speed":   "speed",
 }
 
+// matrixRows is how many rows Matrix draws, effort aside.
+var matrixRows = listLen{def: 6, max: 12}
+
 // MatrixResult carries the cells plus the order their columns belong in. Only
 // the server knows whether a dimension is ordinal; a client inferring the
 // order from the data re-sorts an ordinal scale by volume.
@@ -234,14 +251,11 @@ type MatrixResult struct {
 func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int) (*MatrixResult, error) {
 	rowCol, ok := matrixDims[rows]
 	if !ok {
-		return nil, fmt.Errorf("%w: row %q", ErrUnknownDimension, rows)
+		return nil, unknownDimension("rows", rows, matrixDims)
 	}
 	colCol, ok := matrixDims[cols]
 	if !ok {
-		return nil, fmt.Errorf("%w: column %q", ErrUnknownDimension, cols)
-	}
-	if limit <= 0 || limit > 12 {
-		limit = 6
+		return nil, unknownDimension("cols", cols, matrixDims)
 	}
 	w = w.Normalise()
 	where, args := w.where("")
@@ -256,7 +270,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 		rowFilter = fmt.Sprintf(`%[1]s IN (
 		  SELECT %[1]s FROM event_daily WHERE %[2]s AND %[1]s != ''
 		  GROUP BY 1 ORDER BY SUM(total_tokens) DESC, 1 LIMIT ?)`, rowCol, where)
-		qargs = append(append(qargs, args...), limit)
+		qargs = append(append(qargs, args...), matrixRows.of(limit))
 	}
 	q := fmt.Sprintf(`
 		SELECT %[1]s, COALESCE(NULLIF(%[2]s,''), '`+unknownKey+`'),
