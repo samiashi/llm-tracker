@@ -8,7 +8,7 @@ import { cardId, closeCard, openCard, useExpandedCard } from "@/expanded";
 export const FAILED = "Could not load — retrying.";
 
 /** Where a card's content is drawn: in the grid, or expanded over the page. */
-export type View = {
+type View = {
   expanded: boolean;
   /** A chart's height when expanded; in the grid each chart keeps its own. */
   chartHeight?: number;

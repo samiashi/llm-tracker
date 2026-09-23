@@ -17,8 +17,6 @@
 
   "env": { "browser": true, "es2024": true },
 
-  "ignorePatterns": ["dist", "node_modules", "**/*.tsbuildinfo"],
-
   "rules": {
     // React 17+ automatic runtime: JSX compiles without `React` in scope.
     // On by default with the react plugin, and otherwise fires on every tag.

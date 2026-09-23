@@ -183,10 +183,10 @@ export function Heatmap({
     [model, withYear, tabRow, tabHour],
   );
 
-  // Fixed to the viewport rather than placed inside the grid: the grid sits in
-  // scroll containers that would clip it, as they did below a short range.
-  // Above the cell unless the window has no room there, clamped to the
-  // window's width, and placed again whenever anything scrolls.
+  // Fixed to the viewport rather than placed inside the grid, whose scroll
+  // containers would clip it. Above the cell unless the window has no room
+  // there, clamped to the window's width, and placed again whenever anything
+  // scrolls.
   useLayoutEffect(() => {
     const tip = tipRef.current;
     if (!tip || !hover) return undefined;

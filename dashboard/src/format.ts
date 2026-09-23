@@ -58,7 +58,7 @@ export function bytes(n: number): string {
 }
 
 /** How long since a time in **milliseconds**. `now` is a parameter so render stays pure. */
-export function since(ms: number, now: number = Date.now()): string {
+export function since(ms: number, now: number): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));
   if (s < 10) return "just now";
   if (s < 60) return `${s}s ago`;
@@ -71,7 +71,7 @@ export function since(ms: number, now: number = Date.now()): string {
  * decades. Pass the server's clock as `now`, so a skewed browser cannot age
  * every row. A time ahead of `now` says so rather than passing for fresh.
  */
-export function ago(unix: number, now: number = Date.now() / 1000): string {
+export function ago(unix: number, now: number): string {
   if (!Number.isFinite(unix) || !unix) return "never";
   const s = now - unix;
   if (s < -60) return "clock ahead";

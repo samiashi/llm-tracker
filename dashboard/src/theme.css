@@ -760,9 +760,6 @@ tr:last-child td {
   }
 }
 
-.full {
-  grid-column: 1 / -1;
-}
 .scroll {
   overflow-x: auto;
 }
