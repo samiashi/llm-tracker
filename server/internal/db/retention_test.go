@@ -627,6 +627,61 @@ func TestPruningOldCodexKeysClosesTheirDays(t *testing.T) {
 	}
 }
 
+// Rows on a key their collector has since replaced come back under new ids
+// once their machine upgrades, and the ledger cannot match those to the
+// rollup that already counts them: a prune closes their days instead. Rows
+// already on the current key leave the days open for genuinely late events.
+func TestPruningRowsOnAReplacedKeyClosesTheirDays(t *testing.T) {
+	day := time.Now().AddDate(0, 0, -200)
+	row := func(src schema.Source, nid string, collector int) schema.Event {
+		e := keyed(src, "m", nid, "task", day, 1_000)
+		e.Collector = collector
+		return e
+	}
+	for _, tc := range []struct {
+		name        string
+		stored, now schema.Event
+		closed      bool
+	}{
+		{"cline index key", row(schema.SourceCline, "task#4", 4),
+			row(schema.SourceCline, "task#1790000001000#0", 5), true},
+		{"roo code index key", row(schema.SourceRooCode, "task#4", 4),
+			row(schema.SourceRooCode, "task#1790000001000#0", 5), true},
+		{"cline current key", row(schema.SourceCline, "task#1790000001000#0", 9),
+			row(schema.SourceCline, "task#1790000002000#0", 9), false},
+		// An agent too old to send its collector version sends 0.
+		{"cline current key, collector unsent", row(schema.SourceCline, "task#1790000001000#0", 0),
+			row(schema.SourceCline, "task#1790000002000#0", 0), false},
+		{"opencode session rollup", row(schema.SourceOpenCode, "ses_1", 6),
+			row(schema.SourceOpenCode, "msg_1", 7), true},
+		{"opencode response", row(schema.SourceOpenCode, "msg_1", 8),
+			row(schema.SourceOpenCode, "msg_2", 8), false},
+		{"continue basename", row(schema.SourceContinue, "tokensGenerated.jsonl#0", 8),
+			row(schema.SourceContinue, "m:0.2.0/tokensGenerated.jsonl#0", 10), true},
+		{"continue path under dev_data", row(schema.SourceContinue, "0.2.0/tokensGenerated.jsonl#0", 9),
+			row(schema.SourceContinue, "m:0.2.0/tokensGenerated.jsonl#0", 10), true},
+		{"continue machine key", row(schema.SourceContinue, "m:0.2.0/tokensGenerated.jsonl#0", 10),
+			row(schema.SourceContinue, "m:0.2.0/tokensGenerated.jsonl#64", 10), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newDB(t)
+			ingest(t, d, tc.stored)
+			pruneOld(t, d)
+			d.Pruning = false
+			before := totalTokens(t, d)
+			res := ingest(t, d, tc.now)
+			switch {
+			case tc.closed && (res.EventsSkipped != 1 || totalTokens(t, d) != before):
+				t.Fatalf("skipped %d, total %d -> %d: the re-keyed event was admitted "+
+					"beside the rollup that counts it", res.EventsSkipped, before, totalTokens(t, d))
+			case !tc.closed && res.EventsStored != 1:
+				t.Fatalf("stored %d, skipped %d: a late event on the current key was refused",
+					res.EventsStored, res.EventsSkipped)
+			}
+		})
+	}
+}
+
 // Only rolled-up days keep the prices they were rolled up at: a retention
 // floor whose rollups are gone must not warn that a reprice missed anything.
 func TestRollupsBeforeNamesOnlyRolledUpDays(t *testing.T) {

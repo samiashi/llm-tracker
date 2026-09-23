@@ -129,14 +129,21 @@ func (d *DB) Prune(ctx context.Context, before string) (*PruneResult, error) {
 		return nil, err
 	}
 
-	// Codex rows still on the ordinal key come back under content keys once
-	// their machine upgrades (see 00016), which the ledger cannot match: those
-	// would count again beside this rollup. Their days close for good instead.
+	// A row on a key its collector has since replaced comes back under a new
+	// id once its machine upgrades, which the ledger cannot match: it would
+	// count again beside this rollup. Such a day closes for good instead.
+	// Codex's old keys go per machine when it first reports the new one
+	// (00016); Cline and Roo Code re-keyed at collector 5, opencode at 7 and
+	// Continue at 10.
 	var stale bool
 	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (SELECT 1 FROM event
-		  WHERE day < ? AND source = 'codex' AND native_id GLOB '*.jsonl#*'
-		    AND machine_id NOT IN (SELECT machine_id FROM codex_rekeyed_machine))`,
+		SELECT EXISTS (SELECT 1 FROM event WHERE day < ? AND (
+		     (source = 'codex' AND native_id GLOB '*.jsonl#*'
+		      AND machine_id NOT IN (SELECT machine_id FROM codex_rekeyed_machine))
+		  OR (source IN ('cline', 'roo_code') AND collector < 5
+		      AND native_id GLOB '*#*' AND native_id NOT GLOB '*#*#*')
+		  OR (source = 'opencode' AND collector < 7)
+		  OR (source = 'continue' AND collector < 10)))`,
 		before).Scan(&stale); err != nil {
 		return nil, err
 	}
