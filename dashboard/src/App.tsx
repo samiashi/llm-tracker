@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { Unpriced } from "@/components/Unpriced";
 import { AgentsTable, HealthTable, SessionsTable, UnknownTable } from "@/components/tables";
 import { SLOTS, TOKEN_KIND } from "@/palette";
-import { STALE_MS, useLiveData } from "@/useLiveData";
+import { POLL_MS, STALE_MS, useLiveData } from "@/useLiveData";
 import { intentFromURL, isoAt, MAX_DAYS, resolve, writeIntentToURL } from "@/window";
 import type { Intent } from "@/window";
 
@@ -40,7 +40,9 @@ export default function App() {
   const [clock, setClock] = useState(() => Date.now());
   const tzId = useId();
 
-  // Ticks so a relative window rolls over shortly after UTC midnight.
+  // The page's one clock, read by render instead of Date.now(): it rolls a
+  // relative window over shortly after UTC midnight and keeps "updated 2m
+  // ago" counting between polls.
   useEffect(() => {
     const t = window.setInterval(() => setClock(Date.now()), 10_000);
     return () => window.clearInterval(t);
@@ -64,7 +66,7 @@ export default function App() {
   const load = useCallback((signal: AbortSignal) => loadDashboard(filter, signal), [filter]);
 
   const live = useLiveData<Data>(load, `${filter.from}|${filter.to}|${filter.person ?? ""}`);
-  const { data, loading, refreshing, updatedAt, now } = live;
+  const { data, loading, refreshing, updatedAt } = live;
   const loadFailed = live.error !== null;
 
   if (live.unauthorized) {
@@ -82,7 +84,7 @@ export default function App() {
   // and the range controls, so a failed range can always be changed or retried.
   if (!data && !loadFailed) return <Skeleton />;
 
-  const stale = updatedAt !== null && now - updatedAt > STALE_MS;
+  const stale = updatedAt !== null && clock - updatedAt > STALE_MS;
   const failed = data?.failed ?? [];
   const setPerson = (person?: string) => setIntent((i) => ({ ...i, person }));
   // Typed dates go through resolve, as a link's do, which puts them in order.
@@ -118,12 +120,12 @@ export default function App() {
                 {failed.length} panel{failed.length > 1 ? "s" : ""} could not load
               </span>
             ) : (
-              <span>updated {updatedAt ? since(updatedAt, now) : "—"}</span>
+              <span>updated {updatedAt ? since(updatedAt, clock) : "—"}</span>
             )}
             <button onClick={live.refresh} disabled={refreshing}>
               {refreshing ? "refreshing…" : "refresh"}
             </button>
-            <span className="cadence">auto 60s · agents 5m</span>
+            <span className="cadence">auto {POLL_MS / 1000}s · agents 5m</span>
           </span>
           {/* An action on the range, not an input to it, so it sits with refresh. */}
           <a className="export" href={api.exportURL(filter)} download>
@@ -504,7 +506,7 @@ function Dashboard({
           {(v) => (
             <SessionsTable
               sessions={data.sessions}
-              now={data.agentsNow}
+              now={data.serverNow}
               max={v.expanded ? Infinity : undefined}
               onMore={v.open}
             />
@@ -522,7 +524,7 @@ function Dashboard({
           failed={down.has("health")}
           note="When each tool last produced usage. If a tool you still use stops updating, its log format may have changed."
         >
-          <HealthTable sources={data.health} now={data.agentsNow} agents={data.agents} />
+          <HealthTable sources={data.health} now={data.serverNow} agents={data.agents} />
         </Card>
       </div>
 
@@ -533,7 +535,7 @@ function Dashboard({
             failed={down.has("agents")}
             note="Every machine running the collector. Last sync is a heartbeat, not when anyone worked: if it is old, that machine's usage is missing from the totals."
           >
-            <AgentsTable agents={data.agents} now={data.agentsNow} server={data.server} />
+            <AgentsTable agents={data.agents} now={data.serverNow} server={data.server} />
           </Card>
         </div>
       )}
@@ -546,7 +548,7 @@ function Dashboard({
             title={`Detected but unsupported${down.has("unknown") ? "" : ` (${data.unknown.length})`}`}
             note="Coding tools found on a machine that the collector cannot read. todo: support could be added. blocked: investigated and not readable; the reason is shown."
           >
-            <UnknownTable rows={data.unknown} now={data.agentsNow} />
+            <UnknownTable rows={data.unknown} now={data.serverNow} />
           </Card>
         </div>
       )}

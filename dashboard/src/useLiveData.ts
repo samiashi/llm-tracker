@@ -2,9 +2,9 @@ import { UnauthorizedError } from "@/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** How often to re-fetch while the tab is visible. */
-const POLL_MS = 60_000;
+export const POLL_MS = 60_000;
 /** Older than this and the freshness indicator turns amber. */
-const STALE_MS = 5 * 60_000;
+export const STALE_MS = 5 * 60_000;
 
 type LiveState<T> = {
   /** The last failure was an expired session rather than an outage: it needs a login, not a retry. */
@@ -16,8 +16,6 @@ type LiveState<T> = {
   loading: boolean;
   updatedAt: number | null;
   refreshing: boolean;
-  /** Ticks on a timer so "updated 2m ago" keeps counting between polls. */
-  now: number;
   refresh: () => void;
 };
 
@@ -42,7 +40,6 @@ export function useLiveData<T>(
     updatedAt: number | null;
   }>({ key: "", data: null, error: null, unauthorized: false, updatedAt: null });
   const [refreshing, setRefreshing] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
 
   // Assigned in an effect: a ref written during render is a side effect React may discard.
   const loadRef = useRef(load);
@@ -137,12 +134,6 @@ export function useLiveData<T>(
     };
   }, [key, run]);
 
-  // A clock the render can read purely, instead of calling Date.now() inline.
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 10_000);
-    return () => window.clearInterval(t);
-  }, []);
-
   return {
     data: result.data,
     error: result.error,
@@ -150,12 +141,9 @@ export function useLiveData<T>(
     loading: result.key !== key,
     updatedAt: result.updatedAt,
     refreshing,
-    now,
     refresh: () => {
       setRefreshing(true);
       run(key);
     },
   };
 }
-
-export { STALE_MS };

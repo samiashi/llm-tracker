@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "@/App";
 import type { Totals } from "@/api";
 import { utcMidnightAt } from "@/format";
@@ -126,6 +126,20 @@ const card = (title: string) =>
 
 const loaded = () => waitFor(() => expect(screen.getByText("Total tokens")).toBeTruthy());
 
+/**
+ * The page's ten-second ticks, caught as they are set up: call before render,
+ * then `tick(ms)` moves the clock on and fires them, as the browser would.
+ * Real timers stay, so waitFor and the request timeout keep working.
+ */
+function clockTicks() {
+  const set = vi.spyOn(window, "setInterval");
+  return (ms: number) =>
+    act(() => {
+      vi.setSystemTime(Date.now() + ms);
+      for (const [fn, every] of set.mock.calls) if (every === 10_000) (fn as () => void)();
+    });
+}
+
 // A fixed clock, so "today" and every preset are the same on every run. Only
 // Date is faked: real timers keep waitFor and the request timeout working.
 beforeEach(() => {
@@ -137,6 +151,7 @@ beforeEach(() => {
 // fails on multiple matches rather than on the thing being tested.
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   window.history.replaceState(null, "", "/");
@@ -699,5 +714,16 @@ describe("relative times", () => {
     await loaded();
     const lastSeen = card("Most expensive sessions").querySelector("tbody td:last-child");
     expect(lastSeen?.textContent).toBe("1m ago");
+  });
+
+  // A page that polls every minute otherwise reads as frozen between polls.
+  it("keeps counting how old the figures are between polls", async () => {
+    const tick = clockTicks();
+    vi.stubGlobal("fetch", mockFetch());
+    render(<App />);
+    await loaded();
+    expect(screen.getByText("updated just now")).toBeTruthy();
+    tick(30_000);
+    expect(screen.getByText("updated 30s ago")).toBeTruthy();
   });
 });

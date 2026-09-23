@@ -100,8 +100,11 @@ export type Data = {
   agents: AgentRow[];
   /** The build the team should be on: both halves ship from one tag. */
   server: Version;
-  /** The server's clock, in unix seconds, so an unsynced browser cannot age every row. */
-  agentsNow: number;
+  /**
+   * The server's clock when it answered, in unix seconds: the tables age rows
+   * on it, so a browser with a wrong clock cannot age every row.
+   */
+  serverNow: number;
 };
 
 /** Every request the page makes, keyed by the name a failure is reported under. */
@@ -176,7 +179,7 @@ export async function loadDashboard(filter: Filter, signal: AbortSignal): Promis
     unknown: valueOr(r.unknown, { unknown: [] }).unknown,
     agents: agents.agents,
     server: { version: agents.server_version, release: summary.server_release },
-    agentsNow: agents.now || Math.floor(Date.now() / 1000),
+    serverNow: agents.now || Math.floor(Date.now() / 1000),
     origins: valueOr(r["breakdown:origin"], empty).groups,
     modelEffort: matrix.cells,
     modelEffortOrder: matrix.col_order,
