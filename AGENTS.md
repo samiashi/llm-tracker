@@ -240,11 +240,11 @@ git tag v1.4.0 && git push origin v1.4.0
    `make lint-go test-go lint-dashboard test-dashboard`, the recipes `make lint`
    and `make test` run locally. It does not run CI's darwin job, so tag only a
    commit whose CI is green.
-2. **`agent`, `server` and `image`** cross-compile from Linux: `CGO_ENABLED=0`
-   and a pure-Go SQLite driver mean no macOS runner, which bills at ten times
-   the rate. `agent` and `server` hold read-only tokens and hand their files to
-   `publish` as workflow artifacts, kept 7 days; `image` pushes both
-   architectures untagged, by digest.
+2. **`agent` and `image`** cross-compile from Linux: `CGO_ENABLED=0` and a
+   pure-Go SQLite driver mean no macOS runner, which bills at ten times the
+   rate. `agent` holds a read-only token and hands its files to `publish` as
+   workflow artifacts, kept 7 days; `image` pushes both architectures
+   untagged, by digest.
 3. **`publish`**, the only job with `contents: write`, checks each `.sha256`
    against its binary, creates the draft release or reuses its own from an
    earlier attempt (recognised by `Built from <sha>.` in its body), uploads,
@@ -267,7 +267,6 @@ Runs for one tag share a concurrency group, and every checkout sets
 | Artefact                                                      | Targets                                                                        |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `llm-tracker-agent-darwin-{arm64,amd64}`                    | plus a `.sha256` for each                                                      |
-| `llm-tracker-server-{linux-amd64,linux-arm64,darwin-arm64}` | no checksum yet                                                                |
 | `ghcr.io/<owner>/llm-tracker-server`                        | `linux/amd64`, `linux/arm64`; `:vX.Y.Z`, and `:latest` for the highest release |
 
 Rules, each load-bearing:

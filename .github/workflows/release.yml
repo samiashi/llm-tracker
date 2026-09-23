@@ -116,52 +116,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  server:
-    needs: verify
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: darwin, goarch: arm64 }
-    env:
-      ASSET: llm-tracker-server-${{ matrix.goos }}-${{ matrix.goarch }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: dashboard/package-lock.json
-      # The server embeds the dashboard.
-      - run: npm ci
-        working-directory: dashboard
-      - run: npm run build
-        working-directory: dashboard
-      - uses: actions/setup-go@v7
-        with:
-          go-version: "1.27"
-          cache-dependency-path: |
-            agent/go.sum
-            server/go.sum
-      - name: Build
-        working-directory: server
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
-        run: go build -trimpath -ldflags "-s -w -X main.version=$GITHUB_REF_NAME" -o "../$ASSET" .
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ${{ env.ASSET }}
-          path: ${{ env.ASSET }}
-          if-no-files-found: error
-          retention-days: 7
-
   # The server as a container. The agent gets none: it reads a developer's home
   # directory and runs under launchd.
   image:
@@ -198,7 +152,7 @@ jobs:
           outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/llm-tracker-server,push-by-digest=true,name-canonical=true,push=true
 
   publish:
-    needs: [agent, server, image]
+    needs: [agent, image]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -210,13 +164,11 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
       IMAGE: ghcr.io/${{ github.repository_owner }}/llm-tracker-server
-      # Every artefact install.sh, `agent upgrade` and the README rely on, by
-      # name. Each build job uploads an artifact named after its binary.
+      # Every artefact install.sh and `agent upgrade` download, by name. Each
+      # agent build uploads an artifact named after its binary.
       ASSETS: >-
         llm-tracker-agent-darwin-arm64 llm-tracker-agent-darwin-arm64.sha256
         llm-tracker-agent-darwin-amd64 llm-tracker-agent-darwin-amd64.sha256
-        llm-tracker-server-linux-amd64 llm-tracker-server-linux-arm64
-        llm-tracker-server-darwin-arm64
     steps:
       - uses: actions/download-artifact@v8
         with:
