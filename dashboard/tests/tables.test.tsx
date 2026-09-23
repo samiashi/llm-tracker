@@ -85,6 +85,22 @@ describe("SessionsTable", () => {
     expect(costs(0)).toEqual(["$3.00", "$0"]);
     expect(costs(1)).toEqual(["unpriced", "unpriced"]);
   });
+
+  // Its figures are right for what they cover, and incomplete as a total.
+  it("keeps a partly priced session's figures and says what they leave out", () => {
+    render(
+      <SessionsTable
+        now={2}
+        sessions={[session("mixed", { billed_usd: 3, unpriced_tokens: 1_000_000 })]}
+      />,
+    );
+    expect(costs(0)).toEqual(["$3.00", "$0"]);
+    const cells = [...document.querySelectorAll("tbody td")].slice(5, 7);
+    expect(cells.map((td) => td.getAttribute("title"))).toEqual([
+      "Leaves out 1.0M unpriced tokens",
+      "Leaves out 1.0M unpriced tokens",
+    ]);
+  });
 });
 
 describe("HealthTable", () => {

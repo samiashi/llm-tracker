@@ -126,6 +126,16 @@ describe("MatrixBars", () => {
     expect(tip).not.toContain("$0");
   });
 
+  it("keeps a partly priced model's figures and counts what they leave out", () => {
+    render(
+      <MatrixBars colOrder={ORDER} cells={[cell("m", "high", 30, { unpriced_tokens: 10 })]} />,
+    );
+    expect(document.querySelector(".mrow .cost")?.textContent).toBe("$1.00 billed");
+    expect(document.querySelector(".mrow .mseg")?.getAttribute("title")).toContain(
+      "$1.00 billed, $2.00 rate card, 10 tokens unpriced",
+    );
+  });
+
   it("keeps unknown-basis spend its own figure in the tooltip, and omits it when zero", () => {
     render(
       <MatrixBars
