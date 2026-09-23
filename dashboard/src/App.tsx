@@ -6,6 +6,7 @@ import type { Data, RequestName } from "@/dashboard";
 import { exact, since, tokens, usd, utcMidnightAt, utcOffset } from "@/format";
 import { BarList } from "@/components/BarList";
 import { Card } from "@/components/Card";
+import { DateBox } from "@/components/DateBox";
 import { Tile } from "@/components/Tile";
 import { TokenChart } from "@/components/TokenChart";
 import { ModelChart } from "@/components/ModelChart";
@@ -84,12 +85,13 @@ export default function App() {
   const stale = updatedAt !== null && now - updatedAt > STALE_MS;
   const failed = data?.failed ?? [];
   const setPerson = (person?: string) => setIntent((i) => ({ ...i, person }));
-  // Typed dates go through resolve, as a link's do.
+  // Typed dates go through resolve, as a link's do, which puts them in order.
   const setRange = (from: string, to: string) => {
-    if (!from || !to) return; // a cleared box is not a new range
     const r = resolve({ from, to }, clock);
     setIntent((i) => ({ person: i.person, from: r.from, to: r.to }));
   };
+  const floor = isoAt(clock, MAX_DAYS - 1);
+  const today = isoAt(clock);
 
   return (
     <div className="wrap">
@@ -144,24 +146,26 @@ export default function App() {
             {p.label}
           </button>
         ))}
-        <input
-          type="date"
+        <DateBox
           value={filter.from}
-          min={isoAt(clock, MAX_DAYS - 1)}
+          lo={floor}
+          hi={today}
+          min={floor}
           max={filter.to}
           aria-label="From date"
           aria-describedby={tzId}
-          onChange={(e) => setRange(e.target.value, filter.to)}
+          onCommit={(from) => setRange(from, filter.to)}
         />
         <span className="sep">→</span>
-        <input
-          type="date"
+        <DateBox
           value={filter.to}
+          lo={floor}
+          hi={today}
           min={filter.from}
-          max={isoAt(clock)}
+          max={today}
           aria-label="To date"
           aria-describedby={tzId}
-          onChange={(e) => setRange(filter.from, e.target.value)}
+          onCommit={(to) => setRange(filter.from, to)}
         />
         <span
           className="tz"

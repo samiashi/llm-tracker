@@ -28,7 +28,7 @@ export function isoAt(now: number, daysAgo = 0): string {
  * A real calendar day in ISO form. Round-tripped, because Date parsing rolls
  * an impossible day over ("2026-04-31" reads as 1 May) and the server rejects it.
  */
-function isISODate(v: string | null): v is string {
+export function isISODate(v: string | null): v is string {
   if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const d = new Date(`${v}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;

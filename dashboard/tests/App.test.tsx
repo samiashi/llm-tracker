@@ -576,6 +576,70 @@ describe("the range sent to the server", () => {
     expect(sent).toContain("from=2026-09-10&to=2026-09-20");
     expect(window.location.search).toBe("?from=2026-09-10&to=2026-09-20");
   });
+
+  // A browser sends every keystroke of a typed year as a date: 0002, 0020,
+  // 0202, then 2025. Each partial year was clamped to ten years ago, loaded,
+  // and written back into the box, so the year being typed never landed.
+  it.each([
+    [
+      "From date",
+      ["0002-08-25", "0020-08-25", "0202-08-25"],
+      "2025-08-25",
+      "from=2025-08-25&to=2026-09-10",
+    ],
+    [
+      "To date",
+      ["0002-09-01", "0020-09-01", "0202-09-01"],
+      "2026-09-01",
+      "from=2026-08-25&to=2026-09-01",
+    ],
+  ])("lets a year be typed into %s digit by digit", async (label, partials, typed, range) => {
+    const fetch = mockFetch();
+    vi.stubGlobal("fetch", fetch);
+    window.history.replaceState(null, "", "/?from=2026-08-25&to=2026-09-10");
+    render(<App />);
+    await loaded();
+
+    const box = screen.getByLabelText(label) as HTMLInputElement;
+    fetch.mockClear();
+    for (const partial of partials) {
+      fireEvent.change(box, { target: { value: partial } });
+      expect(box.value).toBe(partial);
+    }
+    expect(window.location.search).toBe("?from=2026-08-25&to=2026-09-10");
+    expect(fetch).not.toHaveBeenCalled();
+
+    fireEvent.change(box, { target: { value: typed } });
+    await waitFor(() => expect(window.location.search).toBe(`?${range}`));
+    expect(box.value).toBe(typed);
+    const sent = fetch.mock.calls.map(([u]) => urlOf(u)).find((u) => u.includes("summary"));
+    expect(sent).toContain(range);
+  });
+
+  // A browser takes up to six year digits, and "20252-08-25" sorts between
+  // two four-digit years as text.
+  it("does not take a fifth digit of a year as a date in range", async () => {
+    vi.stubGlobal("fetch", mockFetch());
+    window.history.replaceState(null, "", "/?from=2026-08-25&to=2026-09-10");
+    render(<App />);
+    await loaded();
+
+    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "20252-08-25" } });
+    expect(window.location.search).toBe("?from=2026-08-25&to=2026-09-10");
+  });
+
+  it("puts a date it cannot take back to the range when the box is left", async () => {
+    vi.stubGlobal("fetch", mockFetch());
+    window.history.replaceState(null, "", "/?from=2026-08-25&to=2026-09-10");
+    render(<App />);
+    await loaded();
+
+    const box = screen.getByLabelText("From date") as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "0202-08-25" } });
+    fireEvent.blur(box);
+    expect(box.value).toBe("2026-08-25");
+    expect(window.location.search).toBe("?from=2026-08-25&to=2026-09-10");
+  });
 });
 
 describe("relative times", () => {
