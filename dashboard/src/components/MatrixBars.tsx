@@ -52,9 +52,9 @@ export function MatrixBars({
   const model = useMemo(() => {
     if (cells.length === 0) return null;
 
+    const ordinal = !!colOrder?.length;
     const rank = new Map((colOrder ?? []).map((c, i) => [norm(c), i]));
     const names = new Map((colOrder ?? []).map((c) => [norm(c), c]));
-    names.set(OTHER, "other");
     const colTotals = new Map<string, number>();
     const rowTotals = new Map<string, number>();
     for (const c of cells) {
@@ -70,22 +70,36 @@ export function MatrixBars({
     const ordered = [...colTotals.entries()]
       .sort(
         (a, b) =>
-          (colOrder ? (rank.get(a[0]) ?? unranked) - (rank.get(b[0]) ?? unranked) : 0) ||
+          (ordinal ? (rank.get(a[0]) ?? unranked) - (rank.get(b[0]) ?? unranked) : 0) ||
           b[1] - a[1],
       )
       .map(([k]) => k);
 
-    // Columns past the palette fold into one declared "other" segment, so a
-    // bar always reaches its own total and the legend explains every segment.
-    const shown = ordered.slice(0, SLOTS.length);
-    const overflow = new Set(ordered.slice(SLOTS.length));
-    const cols = overflow.size > 0 ? [...shown, OTHER] : shown;
-    const colour = new Map(shown.map((k, i) => [k, SLOTS[i]]));
-    colour.set(OTHER, OTHER_FILL);
+    // A level of a scale takes the slot of its place on the scale, not among
+    // the levels present, so a filter that removes its neighbours does not
+    // repaint it; a nominal column takes the slot of its rank. Whatever has
+    // no slot -- a level off the scale, a column past the palette -- folds
+    // into one neutral segment, so a bar always reaches its own total and
+    // the legend explains every segment.
+    const colour = new Map([[OTHER, OTHER_FILL]]);
+    const shown: string[] = [];
+    const folded = new Set<string>();
+    ordered.forEach((k, i) => {
+      const slot = ordinal ? (rank.get(k) ?? SLOTS.length) : i;
+      if (slot < SLOTS.length) {
+        shown.push(k);
+        colour.set(k, SLOTS[slot]);
+      } else {
+        folded.add(k);
+      }
+    });
+    const cols = folded.size > 0 ? [...shown, OTHER] : shown;
+    // Named for what it holds when that is one thing, such as "unknown".
+    names.set(OTHER, folded.size === 1 ? names.get([...folded][0])! : "other");
 
     const byRow = new Map<string, Map<string, Segment>>();
     for (const c of cells) {
-      const key = overflow.has(norm(c.col)) ? OTHER : norm(c.col);
+      const key = folded.has(norm(c.col)) ? OTHER : norm(c.col);
       const segments = byRow.get(c.row) ?? new Map<string, Segment>();
       const s = segments.get(key) ?? {
         key,

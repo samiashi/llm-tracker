@@ -47,6 +47,32 @@ describe("MatrixBars", () => {
     expect(document.querySelector(".mrow .cost")?.textContent).toBe("$2.00 billed");
   });
 
+  // A filter or a new range changes which levels are present; the ones that
+  // remain must not be repainted.
+  it("keeps each level's colour whichever levels are beside it", () => {
+    const { unmount } = render(
+      <MatrixBars colOrder={ORDER} cells={[cell("m", "high", 30), cell("m", "xhigh", 10)]} />,
+    );
+    const alone = colours();
+    unmount();
+    render(
+      <MatrixBars
+        colOrder={ORDER}
+        cells={[cell("m", "low", 10), cell("m", "medium", 10), cell("m", "high", 10)]}
+      />,
+    );
+    expect(colours().high).toBe(alone.high);
+    expect(alone.high).toBe(SLOTS[ORDER.indexOf("high")]);
+  });
+
+  // The server names a missing effort "unknown": the absence of a level, not another one.
+  it("gives a level off the scale the neutral fill, not a level's colour", () => {
+    render(
+      <MatrixBars colOrder={ORDER} cells={[cell("m", "high", 30), cell("m", "unknown", 10)]} />,
+    );
+    expect(colours()).toEqual({ high: SLOTS[ORDER.indexOf("high")], unknown: OTHER_FILL });
+  });
+
   // Slots are assigned by position and never cycled: past the last, one neutral "other".
   it("never gives two columns of a nominal dimension one colour", () => {
     const cols = Array.from({ length: SLOTS.length + 2 }, (_, i) => `c${i}`);
