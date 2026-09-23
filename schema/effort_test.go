@@ -41,7 +41,7 @@ func TestEffortRankFollowsIntensityNotAlphabet(t *testing.T) {
 // are already on this scale.
 func TestOpenCodeVariantsAreKnownLevels(t *testing.T) {
 	for _, v := range []string{"max", "xhigh", "default"} {
-		if EffortRank(v) >= len(EffortOrder) {
+		if EffortRank(v) >= len(effortOrder) {
 			t.Errorf("opencode variant %q is not on the scale", v)
 		}
 	}
@@ -51,9 +51,9 @@ func TestOpenCodeVariantsAreKnownLevels(t *testing.T) {
 }
 
 func TestEffortRankIsMonotonic(t *testing.T) {
-	for i := 1; i < len(EffortOrder); i++ {
-		if EffortRank(EffortOrder[i-1]) >= EffortRank(EffortOrder[i]) {
-			t.Fatalf("%s must rank below %s", EffortOrder[i-1], EffortOrder[i])
+	for i := 1; i < len(effortOrder); i++ {
+		if EffortRank(effortOrder[i-1]) >= EffortRank(effortOrder[i]) {
+			t.Fatalf("%s must rank below %s", effortOrder[i-1], effortOrder[i])
 		}
 	}
 }
@@ -75,7 +75,7 @@ func TestEffortRankIsCaseAndSpaceInsensitive(t *testing.T) {
 
 func TestEffortOrderSQLCoversEveryLevel(t *testing.T) {
 	sql := EffortOrderSQL("effort")
-	for _, e := range EffortOrder {
+	for _, e := range effortOrder {
 		if !contains(sql, "'"+e+"'") {
 			t.Errorf("generated SQL omits %q", e)
 		}
@@ -96,10 +96,10 @@ func contains(haystack, needle string) bool {
 // A rank rendered as one rune ('0'+i) is ":" at ten levels, a named-parameter
 // sigil in SQLite.
 func TestEffortOrderSQLStaysValidBeyondNineLevels(t *testing.T) {
-	saved := EffortOrder
-	t.Cleanup(func() { EffortOrder = saved; effortRank = buildEffortRank() })
+	saved := effortOrder
+	t.Cleanup(func() { effortOrder = saved; effortRank = buildEffortRank() })
 
-	EffortOrder = append(append([]string{}, saved...), "hyper", "omega", "singularity")
+	effortOrder = append(append([]string{}, saved...), "hyper", "omega", "singularity")
 	effortRank = buildEffortRank()
 
 	got := EffortOrderSQL("event.effort")
@@ -108,7 +108,7 @@ func TestEffortOrderSQLStaysValidBeyondNineLevels(t *testing.T) {
 			t.Fatalf("generated invalid SQL %q in: %s", bad, got)
 		}
 	}
-	want := "ELSE " + strconv.Itoa(len(EffortOrder))
+	want := "ELSE " + strconv.Itoa(len(effortOrder))
 	if !strings.Contains(got, want) {
 		t.Fatalf("missing %q in: %s", want, got)
 	}

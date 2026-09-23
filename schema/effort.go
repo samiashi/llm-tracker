@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// EffortOrder is the canonical ordering of reasoning effort levels, least to
+// effortOrder is the canonical ordering of reasoning effort levels, least to
 // most intensive.
 //
 // Two vendors, two scales, which is why this has to be stated rather than
@@ -16,7 +16,7 @@ import (
 //
 // Alphabetical sorting puts "max" before "medium" and "xhigh" last, which is
 // wrong in both directions and makes a chart of an ordinal scale read as noise.
-var EffortOrder = []string{
+var effortOrder = []string{
 	// opencode's word for "no level chosen, use the provider's own". Ranked
 	// lowest because picking anything else is an escalation from it -- not
 	// because it is literally the least reasoning, which varies by provider.
@@ -40,10 +40,10 @@ var effortAlias = map[string]string{
 	"ultracode": "xhigh",
 }
 
-// EffortDisplayOrder is the scale as a chart must draw it: EffortOrder with
+// EffortDisplayOrder is the scale as a chart must draw it: effortOrder with
 // every alias spliced in directly after the level it runs at.
 //
-// EffortOrder stays the pure scale, since an alias listed there would take a
+// effortOrder stays the pure scale, since an alias listed there would take a
 // rank of its own. But a chart's column list must contain every value it can
 // be handed -- MatrixBars ranks a missing one last, drawing "ultracode" above
 // ultra -- and must agree with EffortOrderSQL, which ranks it at xhigh.
@@ -59,8 +59,8 @@ func EffortDisplayOrder() []string {
 		sort.Strings(aliases)
 	}
 
-	out := make([]string, 0, len(EffortOrder)+len(effortAlias))
-	for _, e := range EffortOrder {
+	out := make([]string, 0, len(effortOrder)+len(effortAlias))
+	for _, e := range effortOrder {
 		out = append(out, e)
 		out = append(out, byLevel[e]...)
 	}
@@ -69,11 +69,11 @@ func EffortDisplayOrder() []string {
 
 var effortRank = buildEffortRank()
 
-// buildEffortRank indexes EffortOrder. Factored out so a test can extend the
+// buildEffortRank indexes effortOrder. Factored out so a test can extend the
 // scale and rebuild, to check the generated SQL past nine levels.
 func buildEffortRank() map[string]int {
-	m := make(map[string]int, len(EffortOrder))
-	for i, e := range EffortOrder {
+	m := make(map[string]int, len(effortOrder))
+	for i, e := range effortOrder {
 		m[e] = i
 	}
 	return m
@@ -90,7 +90,7 @@ func EffortRank(effort string) int {
 	if r, ok := effortRank[name]; ok {
 		return r
 	}
-	return len(EffortOrder)
+	return len(effortOrder)
 }
 
 // EffortOrderSQL renders the ranking as a SQL CASE expression over col, so the
@@ -102,7 +102,7 @@ func EffortOrderSQL(col string) string {
 
 	var b strings.Builder
 	b.WriteString("CASE " + expr)
-	for i, e := range EffortOrder {
+	for i, e := range effortOrder {
 		b.WriteString(" WHEN '" + e + "' THEN ")
 		b.WriteString(strconv.Itoa(i))
 	}
@@ -119,7 +119,7 @@ func EffortOrderSQL(col string) string {
 		b.WriteString(strconv.Itoa(EffortRank(effortAlias[alias])))
 	}
 	b.WriteString(" ELSE ")
-	b.WriteString(strconv.Itoa(len(EffortOrder)))
+	b.WriteString(strconv.Itoa(len(effortOrder)))
 	b.WriteString(" END")
 	return b.String()
 }

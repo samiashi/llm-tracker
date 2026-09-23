@@ -112,7 +112,7 @@ type Event struct {
 	InferenceGeo string `json:"inference_geo,omitempty"`
 	Speed        string `json:"speed,omitempty"`
 
-	// Effort is the reasoning level the turn ran at (see EffortOrder). It is
+	// Effort is the reasoning level the turn ran at (see effortOrder). It is
 	// not a pricing input: reasoning tokens bill as ordinary output.
 	Effort string `json:"effort,omitempty"`
 
