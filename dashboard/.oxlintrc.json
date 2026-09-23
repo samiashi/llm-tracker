@@ -1,0 +1,52 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // Type-aware rules run through tsgolint: slower than the syntactic set, but
+  // they are the ones that catch a floating promise or an unchecked nullable.
+  "options": { "typeAware": true },
+
+  // Naming `plugins` replaces the default set, so the four that are on by
+  // default have to be listed again alongside the one we are adding.
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "react"],
+
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+
+  "env": { "browser": true, "es2024": true },
+
+  "ignorePatterns": ["dist", "node_modules", "**/*.tsbuildinfo"],
+
+  "rules": {
+    // React 17+ automatic runtime: JSX compiles without `React` in scope.
+    // On by default with the react plugin, and otherwise fires on every tag.
+    "react/react-in-jsx-scope": "off",
+
+    // Fast refresh only survives if a module exports components and nothing
+    // else; a bare constant is harmless.
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+
+    // An unused value is usually a mistake; an underscore says it was not.
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+
+    // Server JSON is cast to its declared shape at the fetch boundary, and
+    // Recharts types its tooltip payload loosely; both casts are deliberate.
+    "typescript/no-unsafe-type-assertion": "off",
+
+    // Bans `.sort()` because it mutates, but every call site here sorts a fresh
+    // array (a spread, `.map()` or `.filter()`), which the rule cannot see;
+    // `toSorted()` would only allocate a second copy to protect the first.
+    "unicorn/no-array-sort": "off"
+  },
+
+  "overrides": [
+    {
+      // A helper defined beside the test that uses it reads better than one
+      // hoisted to module scope to save an allocation no one will measure.
+      "files": ["tests/**"],
+      "rules": { "unicorn/consistent-function-scoping": "off" }
+    }
+  ]
+}

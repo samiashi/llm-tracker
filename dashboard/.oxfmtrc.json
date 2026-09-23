@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+
+  // Everything this repo wants -- 100 columns, two-space indent, semicolons,
+  // double quotes, trailing commas everywhere -- is already the default.
+
+  // Written by the Go test TestDashboardContract with -update; formatting them
+  // would turn every regeneration into a formatting diff.
+  "ignorePatterns": ["tests/fixtures/api/**"]
+}
