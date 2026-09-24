@@ -100,3 +100,7 @@ cd dashboard && npm run dev     # the dashboard with hot reload at http://127.0.
 [AGENTS.md](AGENTS.md) holds the invariants: the rules that, broken, produce
 wrong numbers rather than errors. Read it before changing the adapters, the
 schema or the queries.
+
+## License
+
+[MIT](LICENSE)
