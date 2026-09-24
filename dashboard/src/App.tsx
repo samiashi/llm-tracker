@@ -73,17 +73,6 @@ export default function App() {
   const { data, loading, refreshing, updatedAt } = live;
   const loadFailed = live.error !== null;
 
-  if (live.unauthorized) {
-    const next = encodeURIComponent(window.location.pathname + window.location.search);
-    return (
-      <div className="wrap">
-        <div className="banner">
-          <b>Your session has expired.</b> <a href={`/auth/login?next=${next}`}>Sign in again</a> to
-          keep going.
-        </div>
-      </div>
-    );
-  }
   // Only the first load shows a skeleton. Every later state keeps the header
   // and the range controls, so a failed range can always be changed or retried.
   if (!data && !loadFailed) return <Skeleton />;
@@ -104,7 +93,7 @@ export default function App() {
       {loading && <div className="loadbar" role="status" aria-label="Loading" />}
 
       <header className="top">
-        <h1>Team token usage</h1>
+        <h1>Token usage</h1>
         <span className="sub">
           history {data?.summary.history_first_day || "—"} → {data?.summary.history_last_day || "—"}
         </span>

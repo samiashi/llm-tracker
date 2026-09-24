@@ -60,10 +60,8 @@ linters:
       # G201/G202: the only values formatted into SQL are package constants --
       # column lists and placeholders -- and dimensions resolved through an
       # allow-list; every value from a request is bound.
-      # G124: Secure is set from config rather than a literal, which the rule
-      # reads as absent. The cookies carry it whenever the base URL is https.
       - linters: [gosec]
-        text: "(G304|G204|G201|G202|G124)"
+        text: "(G304|G204|G201|G202)"
 
       # Tests are the wrong place for these. httptest.NewRequest has no
       # context to inherit, and an unchecked error in a fixture is noise.

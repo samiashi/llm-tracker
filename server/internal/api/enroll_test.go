@@ -16,23 +16,21 @@ import (
 
 const ghToken = "gho_colleague"
 
-// fakeGitHub knows one token, ghToken, and says the same of its owner every
-// time.
+// fakeGitHub knows one token, ghToken, and names its owner alice.
 type fakeGitHub struct {
-	member bool
-	err    error
-	calls  int
+	err   error
+	calls int
 }
 
-func (f *fakeGitHub) Member(_ context.Context, token string) (string, bool, error) {
+func (f *fakeGitHub) Login(_ context.Context, token string) (string, error) {
 	f.calls++
 	switch {
 	case f.err != nil:
-		return "", false, f.err
+		return "", f.err
 	case token != ghToken:
-		return "", false, nil
+		return "", nil
 	}
-	return "alice", f.member, nil
+	return "alice", nil
 }
 
 func enroll(s *Server, contentType, bearer string) *httptest.ResponseRecorder {
@@ -41,19 +39,6 @@ func enroll(s *Server, contentType, bearer string) *httptest.ResponseRecorder {
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	rec := httptest.NewRecorder()
-	s.Routes(http.NotFoundHandler()).ServeHTTP(rec, req)
-	return rec
-}
-
-// enrollVia is an enrolment from client as it arrives through Caddy, which
-// connects from its own address and names the client in X-Forwarded-For.
-func enrollVia(s *Server, client, bearer string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest("POST", "/v1/enroll", strings.NewReader(`{"hostname":"laptop"}`))
-	req.RemoteAddr = "172.18.0.2:41234"
-	req.Header.Set("X-Forwarded-For", client)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+bearer)
 	rec := httptest.NewRecorder()
 	s.Routes(http.NotFoundHandler()).ServeHTTP(rec, req)
 	return rec
@@ -69,7 +54,7 @@ func ingestAs(s *Server, token string) int {
 
 func TestAnEnrolledTokenUploadsUntilItsOwnerIsRevoked(t *testing.T) {
 	s := newServer(t)
-	s.Enroll = &fakeGitHub{member: true}
+	s.Enroll = &fakeGitHub{}
 	s.Version = "v1.4.0"
 
 	rec := enroll(s, "application/json", ghToken)
@@ -106,9 +91,9 @@ func TestIngestRefusesATokenEnrolmentNeverIssued(t *testing.T) {
 	}
 }
 
-// Nobody the dashboard would turn away gets a token, and a request refused on
-// its face never reaches GitHub.
-func TestEnrolmentRefusesWhoeverTheOrgGateWould(t *testing.T) {
+// Only a token GitHub names gets one of ours, and a request refused on its
+// face never reaches GitHub.
+func TestEnrolmentRefusesATokenGitHubDoesNotName(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		verifier    *fakeGitHub
@@ -117,11 +102,10 @@ func TestEnrolmentRefusesWhoeverTheOrgGateWould(t *testing.T) {
 		want        int
 		asksGitHub  bool
 	}{
-		{"not a member", &fakeGitHub{}, "application/json", ghToken, http.StatusForbidden, true},
-		{"token GitHub rejects", &fakeGitHub{member: true}, "application/json", "gho_expired", http.StatusUnauthorized, true},
+		{"token GitHub rejects", &fakeGitHub{}, "application/json", "gho_expired", http.StatusUnauthorized, true},
 		{"GitHub unreachable", &fakeGitHub{err: errors.New("timeout")}, "application/json", ghToken, http.StatusBadGateway, true},
-		{"no token", &fakeGitHub{member: true}, "application/json", "", http.StatusUnauthorized, false},
-		{"form post", &fakeGitHub{member: true}, "application/x-www-form-urlencoded", ghToken, http.StatusUnsupportedMediaType, false},
+		{"no token", &fakeGitHub{}, "application/json", "", http.StatusUnauthorized, false},
+		{"form post", &fakeGitHub{}, "application/x-www-form-urlencoded", ghToken, http.StatusUnsupportedMediaType, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newServer(t)
@@ -144,59 +128,18 @@ func TestEnrolmentRefusesWhoeverTheOrgGateWould(t *testing.T) {
 // outlive the request, even in a log.
 func TestEnrolmentNeverLogsTheGitHubToken(t *testing.T) {
 	var logged bytes.Buffer
-	for _, v := range []*fakeGitHub{{member: true}, {}, {err: errors.New("github returned 502")}} {
-		s := newServer(t)
-		s.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
-		s.Enroll = v
-		enroll(s, "application/json", ghToken)
+	for _, bearer := range []string{ghToken, "gho_expired"} {
+		for _, v := range []*fakeGitHub{{}, {err: errors.New("github returned 502")}} {
+			s := newServer(t)
+			s.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			s.Enroll = v
+			enroll(s, "application/json", bearer)
+		}
 	}
 	if logged.Len() == 0 {
 		t.Fatal("nothing was logged, so this proves nothing")
 	}
-	if strings.Contains(logged.String(), ghToken) {
+	if strings.Contains(logged.String(), ghToken) || strings.Contains(logged.String(), "gho_expired") {
 		t.Fatalf("the GitHub token reached the log:\n%s", logged.String())
-	}
-}
-
-func TestEnrolmentIsRateLimitedBeforeGitHubIsAsked(t *testing.T) {
-	s := newServer(t)
-	v := &fakeGitHub{}
-	s.Enroll = v
-	admitted := 0
-	for ; admitted < 100; admitted++ {
-		rec := enroll(s, "application/json", ghToken)
-		if rec.Code == http.StatusTooManyRequests {
-			if rec.Header().Get("Retry-After") == "" {
-				t.Fatal("429 without Retry-After")
-			}
-			break
-		}
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("status = %d within the limit", rec.Code)
-		}
-	}
-	if admitted == 0 || admitted == 100 {
-		t.Fatalf("%d enrolments from one address before a 429", admitted)
-	}
-	if v.calls != admitted {
-		t.Fatalf("GitHub asked %d times for %d admitted enrolments", v.calls, admitted)
-	}
-}
-
-// Anyone can send an enrolment with any bearer, so one caller's refusals must
-// not use up the budget a colleague enrolling from elsewhere needs.
-func TestOneAddressCannotUseUpEnrolmentForEveryone(t *testing.T) {
-	s := newServer(t)
-	s.Enroll = &fakeGitHub{member: true}
-	for range 100 {
-		if enrollVia(s, "203.0.113.7", "garbage").Code == http.StatusTooManyRequests {
-			break
-		}
-	}
-	if rec := enrollVia(s, "203.0.113.7", ghToken); rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("setup: the flooding address is not limited: %d", rec.Code)
-	}
-	if rec := enrollVia(s, "198.51.100.2", ghToken); rec.Code != http.StatusOK {
-		t.Fatalf("a member from another address: %d %s", rec.Code, rec.Body)
 	}
 }

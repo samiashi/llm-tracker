@@ -8,18 +8,24 @@ import (
 	"testing"
 )
 
-// A loopback server serves no org, so enrolment admits whoever GitHub names,
-// and still refuses a token GitHub itself rejects. Only /user is asked.
-func TestLocalEnrolmentAdmitsWhoeverGitHubNames(t *testing.T) {
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// Enrolment admits whoever GitHub names, and refuses a token GitHub itself
+// rejects. Only /user is asked.
+func TestEnrolmentAdmitsWhoeverGitHubNames(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		status    int
+		body      string
 		wantLogin string
 		wantErr   bool
 	}{
-		{"a token GitHub names", http.StatusOK, "alice", false},
-		{"a token GitHub rejects", http.StatusUnauthorized, "", false},
-		{"GitHub failing", http.StatusBadGateway, "", true},
+		{"a token GitHub names", http.StatusOK, `{"login":"alice"}`, "alice", false},
+		{"a token GitHub rejects", http.StatusUnauthorized, `{"login":"alice"}`, "", false},
+		{"GitHub failing", http.StatusBadGateway, `{"login":"alice"}`, "", true},
+		{"a user with no login", http.StatusOK, `{}`, "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			l := NewLocal()
@@ -29,18 +35,18 @@ func TestLocalEnrolmentAdmitsWhoeverGitHubNames(t *testing.T) {
 					t.Errorf("request to %s with Authorization %q", r.URL, r.Header.Get("Authorization"))
 				}
 				return &http.Response{StatusCode: tc.status, Header: http.Header{}, Request: r,
-					Body: io.NopCloser(strings.NewReader(`{"login":"alice"}`))}, nil
+					Body: io.NopCloser(strings.NewReader(tc.body))}, nil
 			})}
-			login, member, err := l.Member(context.Background(), "gho_colleague")
-			if (err != nil) != tc.wantErr || login != tc.wantLogin || member != (tc.wantLogin != "") {
-				t.Fatalf("Member = (%q, %v, %v), want login %q", login, member, err, tc.wantLogin)
+			login, err := l.Login(context.Background(), "gho_colleague")
+			if (err != nil) != tc.wantErr || login != tc.wantLogin {
+				t.Fatalf("Login = (%q, %v), want login %q", login, err, tc.wantLogin)
 			}
 		})
 	}
 }
 
-// IsLoopback decides both where a local server may listen and which requests
-// it serves, so a name that merely starts like a loopback one must fail.
+// IsLoopback decides both where the server may listen and which requests it
+// serves, so a name that merely starts like a loopback one must fail.
 func TestIsLoopbackNamesOnlyThisMachine(t *testing.T) {
 	for host, want := range map[string]bool{
 		"127.0.0.1:8790":         true,

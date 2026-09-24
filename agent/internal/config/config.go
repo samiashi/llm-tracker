@@ -9,7 +9,7 @@ import (
 
 // Config is what enroll saves.
 type Config struct {
-	// ServerURL is the team server. Empty means not yet enrolled: the agent
+	// ServerURL is the tracker's server. Empty means not yet enrolled: the agent
 	// still builds its local archive.
 	ServerURL string `json:"server_url"`
 	Token     string `json:"token,omitempty"`

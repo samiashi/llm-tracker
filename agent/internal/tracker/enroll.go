@@ -16,7 +16,7 @@ import (
 )
 
 // Enroll asks the tracker at baseURL for an ingest token of this machine's
-// own, proving org membership with githubToken.
+// own, proving who is asking with githubToken.
 //
 // That token opens everything its owner can reach on GitHub, so it goes to
 // baseURL and nowhere else: never in the clear (RequireTLS), and never on

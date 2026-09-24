@@ -16,7 +16,6 @@ __pycache__/
 server/internal/web/dist/*
 !server/internal/web/dist/.gitkeep
 
-# Every env file, except the committed template, which holds no secrets.
+# Env files hold secrets.
 .env
 .env.*
-!.env.example

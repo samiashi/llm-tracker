@@ -260,7 +260,7 @@ type IngestAck struct {
 }
 
 // EnrollRequest asks the server for an ingest token of this machine's own.
-// The GitHub token that proves org membership travels as the bearer, never in
+// The GitHub token that names who is asking travels as the bearer, never in
 // the body.
 type EnrollRequest struct {
 	Hostname string `json:"hostname"`

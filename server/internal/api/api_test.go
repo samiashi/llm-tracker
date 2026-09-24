@@ -33,7 +33,7 @@ func newServer(t *testing.T) *Server {
 	if testToken, err = d.IssueToken(context.Background(), "tester", "test"); err != nil {
 		t.Fatal(err)
 	}
-	return &Server{DB: d, Log: slog.New(slog.DiscardHandler), Enroll: &fakeGitHub{member: true}}
+	return &Server{DB: d, Log: slog.New(slog.DiscardHandler), Enroll: &fakeGitHub{}}
 }
 
 // ingestReq builds an authorised ingest request.

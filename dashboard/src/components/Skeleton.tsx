@@ -6,7 +6,7 @@ export function Skeleton() {
   return (
     <div className="wrap" aria-busy="true" aria-live="polite">
       <header className="top">
-        <h1>Team token usage</h1>
+        <h1>Token usage</h1>
         <span className="sub">loading…</span>
       </header>
 

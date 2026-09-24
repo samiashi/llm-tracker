@@ -14,12 +14,12 @@ export default defineConfig({
   },
   build: { outDir: "../server/internal/web/dist", emptyOutDir: true },
   server: {
-    // The same host as the server, so the session cookie from signing in on
-    // :8790 is sent here too: cookies are per host, not per port.
+    // Loopback only, like the server. The proxy passes on this Host, which
+    // the server checks names this machine.
     host: "127.0.0.1",
     port: 5178,
     // In dev the SPA runs on Vite and proxies the API, so the dashboard can
     // hot-reload against the real server instead of a mock.
-    proxy: { "/v1": "http://127.0.0.1:8790", "/auth": "http://127.0.0.1:8790" },
+    proxy: { "/v1": "http://127.0.0.1:8790" },
   },
 });

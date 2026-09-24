@@ -4,12 +4,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 )
 
-// main's wiring, /auth included, is covered in package main.
+// main's wiring is covered in package main.
 func TestNoAPIResponseIsCacheable(t *testing.T) {
 	s := newServer(t)
 	seed(t, s, event("a", "claude-opus-5", "anthropic:a", 100))
@@ -33,9 +32,6 @@ func TestNoAPIResponseIsCacheable(t *testing.T) {
 		h := rec.Result().Header
 		if got := h.Get("Cache-Control"); got != "no-store" {
 			t.Errorf("%s: Cache-Control = %q, want no-store", tc.path, got)
-		}
-		if !slices.Contains(h.Values("Vary"), "Cookie") {
-			t.Errorf("%s: Vary = %v, want it to include Cookie", tc.path, h.Values("Vary"))
 		}
 	}
 }
@@ -81,15 +77,13 @@ func TestSecurityHeadersCoverWhateverTheyWrap(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/auth/login", nil))
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 
 	for k, want := range map[string]string{
 		"X-Content-Type-Options": "nosniff",
 		"X-Frame-Options":        "DENY",
 		"Referrer-Policy":        "same-origin",
 		"Cache-Control":          "no-store",
-
-		"Strict-Transport-Security": "max-age=31536000",
 	} {
 		if got := rec.Result().Header.Get(k); got != want {
 			t.Errorf("%s = %q, want %q", k, got, want)

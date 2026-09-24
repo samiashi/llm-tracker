@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -38,15 +37,9 @@ func handler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 
-	authn, err := auth.New(auth.Config{
-		ClientID: "id", ClientSecret: "secret", Org: "org", BaseURL: "http://127.0.0.1:8790",
-		SessionKey: []byte("0123456789abcdef0123456789abcdef"),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := &api.Server{DB: d, Log: slog.New(slog.DiscardHandler), Version: "v1.0.0", Enroll: authn}
-	return newHandler(srv, authn, web.NewHandler(fstest.MapFS{
+	g := auth.NewLocal()
+	srv := &api.Server{DB: d, Log: slog.New(slog.DiscardHandler), Version: "v1.0.0", Enroll: g}
+	return newHandler(srv, g, web.NewHandler(fstest.MapFS{
 		"index.html":             {Data: []byte("<!doctype html><title>dashboard</title>")},
 		"assets/index-abc123.js": {Data: []byte("console.log(1)")},
 	}))
@@ -58,13 +51,15 @@ type reply struct {
 	Header     http.Header
 }
 
-// send serves one request carrying what an agent's upload carries.
-func send(h http.Handler, method, target string) reply {
+// send serves one request, addressed to host, carrying what an agent's
+// upload carries.
+func send(h http.Handler, host, method, target string) reply {
 	var body io.Reader
 	if method == http.MethodPost {
 		body = strings.NewReader(`{"v":1,"machine_id":"m","events":[]}`)
 	}
 	req := httptest.NewRequest(method, target, body)
+	req.Host = host
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -74,95 +69,42 @@ func send(h http.Handler, method, target string) reply {
 	return reply{res.StatusCode, res.Header}
 }
 
+// The gate's refusals included: a page that rebinds its hostname is still a
+// page, and gets no frame and no cache.
 func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 	h := handler(t)
-	for _, tc := range []struct{ method, path string }{
-		{"GET", "/v1/summary"}, {"GET", "/v1/export.csv"}, {"GET", "/healthz"},
-		{"GET", "/auth/login"}, {"GET", "/auth/logout"}, {"GET", "/auth/callback"},
-		{"GET", "/v1/no-such-endpoint"}, {"POST", "/v1/summary"}, {"GET", "/"},
-		{"POST", "/v1/ingest"}, {"POST", "/v1/enroll"},
+	for _, tc := range []struct{ host, method, path string }{
+		{"127.0.0.1:8790", "GET", "/v1/summary"}, {"127.0.0.1:8790", "GET", "/v1/export.csv"},
+		{"127.0.0.1:8790", "GET", "/healthz"}, {"127.0.0.1:8790", "GET", "/v1/no-such-endpoint"},
+		{"127.0.0.1:8790", "POST", "/v1/summary"}, {"127.0.0.1:8790", "GET", "/"},
+		{"127.0.0.1:8790", "POST", "/v1/ingest"}, {"127.0.0.1:8790", "POST", "/v1/enroll"},
+		{"evil.example", "GET", "/"}, {"evil.example", "GET", "/assets/index-abc123.js"},
 	} {
-		res := send(h, tc.method, tc.path)
+		res := send(h, tc.host, tc.method, tc.path)
 		for k, want := range map[string]string{
 			"X-Content-Type-Options": "nosniff",
 			"X-Frame-Options":        "DENY",
 			"Referrer-Policy":        "same-origin",
-
-			"Strict-Transport-Security": "max-age=31536000",
 		} {
 			if got := res.Header.Get(k); got != want {
-				t.Errorf("%s %s (%d): %s = %q, want %q", tc.method, tc.path, res.StatusCode, k, got, want)
+				t.Errorf("%s %s%s (%d): %s = %q, want %q", tc.method, tc.host, tc.path, res.StatusCode, k, got, want)
 			}
 		}
 		if !strings.Contains(res.Header.Get("Content-Security-Policy"), "frame-ancestors 'none'") {
-			t.Errorf("%s %s: no CSP", tc.method, tc.path)
+			t.Errorf("%s %s%s: no CSP", tc.method, tc.host, tc.path)
 		}
-		if res.Header.Get("Cache-Control") != "no-store" {
-			t.Errorf("%s %s (%d): Cache-Control = %q, want no-store",
-				tc.method, tc.path, res.StatusCode, res.Header.Get("Cache-Control"))
-		}
-		if !slices.Contains(res.Header.Values("Vary"), "Cookie") {
-			t.Errorf("%s %s: Vary = %v, want Cookie", tc.method, tc.path, res.Header.Values("Vary"))
-		}
-	}
-}
-
-// Without a session the bundle's immutable caching must not reach the login
-// redirect that stands in for it.
-func TestStaticCachingNeverReachesTheLoginRedirect(t *testing.T) {
-	h := handler(t)
-	for _, path := range []string{"/assets/index-abc123.js", "/", "/v1/summary"} {
-		res := send(h, "GET", path)
-		if got := res.Header.Get("Cache-Control"); got != "no-store" {
-			t.Errorf("%s (%d): Cache-Control = %q, want no-store", path, res.StatusCode, got)
+		// The page and its bundles set their own caching; nothing else may be stored.
+		static := res.StatusCode == http.StatusOK && (tc.path == "/" || strings.HasPrefix(tc.path, "/assets/"))
+		if !static && res.Header.Get("Cache-Control") != "no-store" {
+			t.Errorf("%s %s%s (%d): Cache-Control = %q, want no-store",
+				tc.method, tc.host, tc.path, res.StatusCode, res.Header.Get("Cache-Control"))
 		}
 	}
 }
 
-func TestNoOtherSpellingOfAnExemptRouteServesThePage(t *testing.T) {
-	h := handler(t)
-	for _, tc := range []struct{ method, path string }{
-		{"GET", "/v1%2Fingest"}, {"GET", "/auth%2Flogin"}, {"POST", "/auth/login"}, {"POST", "/healthz"},
-	} {
-		res := send(h, tc.method, tc.path)
-		if res.StatusCode == http.StatusOK {
-			t.Errorf("%s %s was served (%s) without a session", tc.method, tc.path,
-				res.Header.Get("Content-Type"))
-		}
-	}
-}
-
-// clearAuth unsets every GitHub auth setting for the test.
-func clearAuth(t *testing.T) {
-	t.Helper()
-	for _, k := range authSettings {
-		t.Setenv(k, "")
-	}
-}
-
-// Some settings but not all is a deployment short of one, never local
-// development: the server names every one that is missing instead of starting.
-func TestAHalfConfiguredServerNamesWhatIsMissing(t *testing.T) {
-	clearAuth(t)
-	t.Setenv("LLM_TRACKER_GITHUB_ORG", "your-org")
-	_, err := dashboardGate("127.0.0.1:8790", slog.New(slog.DiscardHandler))
-	if err == nil {
-		t.Fatal("a server with only the org set started, on loopback")
-	}
-	for _, k := range []string{"CLIENT_ID", "CLIENT_SECRET", "BASE_URL", "SESSION_KEY"} {
-		if !strings.Contains(err.Error(), k) {
-			t.Errorf("%v does not name %s", err, k)
-		}
-	}
-	if strings.Contains(err.Error(), "GITHUB_ORG") {
-		t.Errorf("%v names the org, which is set", err)
-	}
-}
-
-// With no GitHub app, a server serves only this machine: it starts on a
-// loopback address, and refuses any address another machine could reach.
-func TestWithNoGitHubAppOnlyALoopbackServerStarts(t *testing.T) {
-	clearAuth(t)
+// The dashboard has no sign-in, so a server started on an address another
+// machine can reach would serve it to anyone.
+func TestOnlyALoopbackServerStarts(t *testing.T) {
 	for _, tc := range []struct {
 		addr   string
 		starts bool
@@ -174,50 +116,27 @@ func TestWithNoGitHubAppOnlyALoopbackServerStarts(t *testing.T) {
 		{":8790", false},
 		{"192.168.1.20:8790", false},
 	} {
-		g, err := dashboardGate(tc.addr, slog.New(slog.DiscardHandler))
-		if started := err == nil; started != tc.starts {
-			t.Errorf("%s: started %v (err %v), want %v", tc.addr, started, err, tc.starts)
-		}
-		if err == nil {
-			if _, ok := g.(*auth.Local); !ok {
-				t.Errorf("%s: gate %T, want the local one", tc.addr, g)
-			}
+		if err := loopbackOnly(tc.addr); (err == nil) != tc.starts {
+			t.Errorf("%s: err %v, want starts = %v", tc.addr, err, tc.starts)
 		}
 	}
 }
 
-// Locally the dashboard needs no sign-in, but only for a request addressed to
-// this machine by name: a page elsewhere that rebinds its hostname to
-// 127.0.0.1 gets nothing. Uploads still need an enrolled token.
-func TestALocalServerServesOnlyRequestsAddressedToThisMachine(t *testing.T) {
-	d, err := db.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { d.Close() })
-	g := auth.NewLocal()
-	srv := &api.Server{DB: d, Log: slog.New(slog.DiscardHandler), Version: "v1.0.0", Enroll: g}
-	h := newHandler(srv, g, web.NewHandler(fstest.MapFS{
-		"index.html": {Data: []byte("<!doctype html><title>dashboard</title>")},
-	}))
-
-	get := func(host, target string) int {
-		req := httptest.NewRequest(http.MethodGet, target, nil)
-		req.Host = host
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		return rec.Code
-	}
+// The dashboard needs no sign-in, but only for a request addressed to this
+// machine by name: a page elsewhere that rebinds its hostname to 127.0.0.1
+// gets nothing. Uploads still need an enrolled token.
+func TestTheServerAnswersOnlyRequestsAddressedToThisMachine(t *testing.T) {
+	h := handler(t)
 	for _, host := range []string{"127.0.0.1:8790", "localhost:5178", "[::1]:8790"} {
 		for _, target := range []string{"/", "/v1/summary"} {
-			if code := get(host, target); code != http.StatusOK {
-				t.Errorf("%s%s: %d, want 200 with no sign-in", host, target, code)
+			if res := send(h, host, http.MethodGet, target); res.StatusCode != http.StatusOK {
+				t.Errorf("%s%s: %d, want 200 with no sign-in", host, target, res.StatusCode)
 			}
 		}
 	}
 	for _, host := range []string{"evil.example", "evil.example:8790", "127.0.0.1.evil.example"} {
-		if code := get(host, "/v1/summary"); code != http.StatusMisdirectedRequest {
-			t.Errorf("Host %s: %d, want 421", host, code)
+		if res := send(h, host, http.MethodGet, "/v1/summary"); res.StatusCode != http.StatusMisdirectedRequest {
+			t.Errorf("Host %s: %d, want 421", host, res.StatusCode)
 		}
 	}
 

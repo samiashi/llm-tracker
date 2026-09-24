@@ -83,7 +83,7 @@ func TestEnrollSaysWhyTheServerRefused(t *testing.T) {
 		body   string
 		says   string
 	}{
-		{"not a member", 403, `{"error":"alice is not a member"}`, "server returned 403: alice is not a member"},
+		{"GitHub rejected the token", 401, `{"error":"GitHub rejected the token"}`, "server returned 401: GitHub rejected the token"},
 		{"no enrolment", 404, `{"error":"this server does not enrol agents"}`, "does not enrol"},
 		// A dashboard page, or anything else answering 200, is not a token.
 		{"not the tracker", 200, "<!doctype html>", "did not answer with an enrolment"},

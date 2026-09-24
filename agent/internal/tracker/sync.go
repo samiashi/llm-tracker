@@ -1,4 +1,4 @@
-// Package tracker uploads the local archive to the team server.
+// Package tracker uploads the local archive to the tracker's server.
 package tracker
 
 import (

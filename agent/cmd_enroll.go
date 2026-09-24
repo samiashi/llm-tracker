@@ -16,10 +16,9 @@ import (
 	"github.com/samiashi/llm-tracker/schema"
 )
 
-// cmdEnroll joins this machine to the team's tracker with nothing typed. The
-// GitHub CLI's token goes to the server, which checks org membership -- the
-// test that gates the dashboard -- and issues an ingest token of this
-// machine's own.
+// cmdEnroll joins this machine to the tracker with nothing typed. The GitHub
+// CLI's token goes to the server, which asks GitHub whose it is and issues an
+// ingest token of this machine's own, under that login.
 //
 // The server spends the GitHub token on that check and keeps nothing of it;
 // the token it issues can only upload, and its -revoke withdraws it.

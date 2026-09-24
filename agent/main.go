@@ -1,5 +1,5 @@
 // Command llm-tracker-agent collects local AI coding-agent token usage and
-// forwards counts -- never content -- to a team server.
+// forwards counts -- never content -- to the tracker's server.
 package main
 
 import (
@@ -21,9 +21,9 @@ import (
 
 var version = "dev"
 
-// defaultServer is the tracker enroll joins. The team runs one, so installing
-// the agent names nothing; -server exists for developing the server.
-const defaultServer = "https://llm-tracker.example.com"
+// defaultServer is the tracker enroll joins: the server's own default
+// address, on this machine.
+const defaultServer = "http://127.0.0.1:8790"
 
 // ghCommand runs the GitHub CLI against github.com: gh takes the host from
 // GH_HOST, and anything that set it would choose the server a token comes
@@ -42,14 +42,14 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `llm-tracker-agent -- team token-usage collector
+	fmt.Fprintf(os.Stderr, `llm-tracker-agent -- token-usage collector
 
 commands:
   scan        run one collection pass and print what was found
   sync        upload pending events to the server
   run         collect and sync on an interval (used by launchd)
   status      show local archive, accounts and configuration
-  enroll      join the team tracker as your GitHub login
+  enroll      join the tracker as your GitHub login
   sources     list every registered harness adapter
   probe       dry-run one adapter and report what it would extract
   rewind      re-read one source, upgrading rows in place (after adding a field)
@@ -65,8 +65,7 @@ is running, they say how to stop it and start it again.
 flags:
   -data <dir>       state directory (default: the installed collector's,
                     else ~/.llm-tracker)
-  -server <url>     enroll: a tracker other than %s,
-                    when developing the server
+  -server <url>     enroll: the tracker's address, if not %s
   -source <name>    rewind / resync: any registered source (see: sources)
   -yes              resync: skip the confirmation prompt
   -v                verbose logging

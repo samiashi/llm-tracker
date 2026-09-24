@@ -4,32 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/samiashi/llm-tracker/schema"
-	"github.com/samiashi/llm-tracker/server/internal/auth"
 )
 
-// Verifier says who a GitHub token belongs to and whether they may enrol, with
-// an empty login when GitHub rejects the token: auth.Authenticator admits the
-// org's members, auth.Local, on a loopback server, whoever GitHub names.
+// Verifier names the GitHub user a token belongs to, with an empty login when
+// GitHub rejects the token (see auth.Local).
 type Verifier interface {
-	Member(ctx context.Context, token string) (login string, member bool, err error)
+	Login(ctx context.Context, token string) (string, error)
 }
 
 // maxEnrollBytes bounds a request that carries one hostname.
 const maxEnrollBytes = 4 << 10
 
-// limiter counts enrolment attempts, each of which spends the caller's token
-// on GitHub, per client address and in all (see auth.Limiter).
-type limiter = auth.Limiter
-
 // handleEnroll trades a GitHub token for an ingest token of the machine's own,
-// if the token's owner is in the org -- the test the dashboard applies. The
-// GitHub token is spent on that check and neither kept nor logged; the one
-// issued is kept only as a hash, and `-revoke` withdraws it.
+// issued to the login GitHub names. The GitHub token is spent on that one
+// question and neither kept nor logged; the one issued is kept only as a
+// hash, and `-revoke` withdraws it.
 func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if !requireJSON(w, r) {
 		return
@@ -44,28 +37,17 @@ func (s *Server) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("malformed request body"))
 		return
 	}
-	if !s.enrolments.Allow(r) {
-		w.Header().Set("Retry-After", "60")
-		writeErr(w, http.StatusTooManyRequests, errors.New("too many enrolments at once; try again in a minute"))
-		return
-	}
-
-	login, member, err := s.Enroll.Member(r.Context(), ghToken)
+	login, err := s.Enroll.Login(r.Context(), ghToken)
 	switch {
 	case err != nil:
-		s.Log.Error("enroll: checking org membership", "err", err)
+		s.Log.Error("enroll: asking GitHub whose token this is", "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{
-			"error": "could not confirm org membership with GitHub; try again shortly",
+			"error": "could not ask GitHub whose token this is; try again shortly",
 		})
 		return
 	case login == "":
 		writeErr(w, http.StatusUnauthorized, errors.New(
 			"GitHub rejected the token; run `gh auth login` and try again"))
-		return
-	case !member:
-		s.Log.Warn("enroll: refused, not an org member", "login", login)
-		writeErr(w, http.StatusForbidden, fmt.Errorf(
-			"%s is not a member of the GitHub organisation this tracker serves", login))
 		return
 	}
 

@@ -5,9 +5,9 @@ changing anything under `schema/`, `agent/` or `server/internal/db/`.
 
 ## What this is
 
-A Go daemon reads AI coding-agent session logs from each developer's Mac and
-ships **token counts only** to a self-hosted server with an embedded React
-dashboard. Three modules plus a frontend:
+A Go daemon reads AI coding-agent session logs on a Mac and ships **token
+counts only** to a server on the same Mac, which embeds a React dashboard.
+Three modules plus a frontend:
 
 ```
 schema/     event types + generated price table — imported by BOTH binaries
@@ -226,13 +226,13 @@ collects with an older adapter set, which reads as smaller numbers rather than
 as an error — but an agent that stopped uploading because it was out of date
 would turn that into missing data.
 
-## Deploying the server
+## Running the server
 
-One binary and one SQLite file. No external database, no Redis, nothing to
-provision but a disk.
+One binary and one SQLite file, on the Mac it tracks. No external database,
+nothing to set up.
 
 - **Migrations run themselves** — `goose.Up` on `db.Open`, from an embedded FS.
-  Deploying is replacing the binary and restarting.
+  Upgrading is replacing the binary and restarting.
 - **Stored costs follow the build.** Cost is resolved at ingest, so each new
   build, and a changed price table under the same build, reprices stored
   events once, in the background after it starts (`db.RepriceIfChanged`). Every write is conditional on the row still holding
@@ -244,21 +244,14 @@ provision but a disk.
   keep retiring re-keyed rows as agents upgrade, so never plan a rollback that
   crosses one;
   roll forward with a new migration. And never edit one that has shipped.
-- **One writer, ever.** SQLite on a volume means exactly one instance. Two
-  gives you two divergent databases and no error.
 - **Back up the `.db`** — and its `-wal`, or use `sqlite3 .backup`, which is
   consistent without stopping the server.
 
-The server has two gates, chosen by its settings. With all of
-`LLM_TRACKER_GITHUB_{CLIENT_ID,CLIENT_SECRET,ORG}`, `LLM_TRACKER_BASE_URL`
-and a `LLM_TRACKER_SESSION_KEY` of at least 32 bytes, the dashboard needs a
-GitHub session from a member of the org. With none of them it is local
-development, and must listen on loopback: no sign-in, a request served only
-when its Host names this machine (a page elsewhere can rebind its hostname to
-127.0.0.1), and enrolment open to whoever GitHub names. Anything between —
-some settings, or none on an address other machines can reach — refuses to
-start and names what is missing, so a deployment short of one secret never
-serves an open dashboard. There is no shared token and no other mode.
+The dashboard has no sign-in, so the server listens on loopback and refuses
+to start on an address another machine could reach. It serves a request only
+when its Host names this machine: a page elsewhere can rebind its hostname to
+127.0.0.1, and would otherwise read the dashboard as its own. Enrolment is
+open to whoever GitHub names. There is no shared token and no other mode.
 
 Retention is off by default. Pruning rolls each day up before deleting its
 events, and a rolled-up day never returns to per-event detail: turning pruning
@@ -303,19 +296,18 @@ fixed order and never cycled, and no chart uses two y-axes.
 
 ## Security
 
-- Everything but `/healthz`, the OAuth flow, ingest and enrolment needs a
-  GitHub session from a member of the org, the page and its scripts included
-  — or, on a local server, a request addressed to loopback (see Deploying).
+- Nothing needs a sign-in: the server listens on loopback and answers only a
+  request addressed to this machine by name (see Running the server).
 - Ingest takes only tokens enrolment issued. `POST /v1/enroll` trades a GitHub
-  token for one, after the org check the dashboard makes; the server keeps only
-  a SHA-256 of it.
+  token for one, issued to the login GitHub names; the server keeps only a
+  SHA-256 of it.
 - A token's login is who uploads; nothing else in a batch says whose a row is.
   A machine and an account belong to the first login that uploads them, a
   batch for another login's machine gets 409 and changes nothing, and another
   login's email is never written to this one's accounts. Every row is stored
   under the batch's machine, and only that machine can move a row it stored.
   `-revoke <login>` withdraws a login's tokens and releases its machines and
-  accounts, so a laptop that changes hands can be claimed.
+  accounts, so another login can claim them.
 - Ingest bounds the body at 16 MiB before and after gzip and every list in a
   batch near what an agent sends, decodes at most four batches at once (a fifth
   gets 503), clips every string, and rejects an event whose counters,
@@ -323,15 +315,10 @@ fixed order and never cycled, and no chart uses two y-axes.
   the uploading machine. A list added to `schema.Batch`
   must be shadowed in `ingestBody`, with a limit in `listLimit`; a test fails
   until it is.
-- Enrolment and sign-in, the two routes that spend a GitHub call before
-  anyone is known, are rate-limited per client address under a global cap.
 - Never log or transmit an OAuth token. `identity` reads them only to name the
   active account. The one exception is `enroll`, which sends the GitHub CLI's
   token to the tracker, once: only over https (loopback excepted), never on
-  through a redirect, and the server spends it on the membership check alone.
-- Secrets belong in `.env`, which is gitignored. `.env.example` is the
-  committed template: add the key there too, with no value, or nobody else
-  learns it exists.
+  through a redirect, and the server spends it on asking GitHub whose it is.
 
 ## Do not
 
@@ -339,4 +326,4 @@ fixed order and never cycled, and no chart uses two y-axes.
 - Add a field to `schema.Event` that could hold message text.
 - Use `resync` where `rewind` would do — it deletes rows before rebuilding and
   permanently loses anything past a source's retention window.
-- Commit `.env`, `*.db`, or anything under `bin/`.
+- Commit `*.db`, or anything under `bin/`.

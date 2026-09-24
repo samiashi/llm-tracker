@@ -1,4 +1,4 @@
-import { api, UnauthorizedError } from "@/api";
+import { api } from "@/api";
 import type { Version } from "@/fleet";
 import type {
   AgentRow,
@@ -141,14 +141,6 @@ export async function loadDashboard(filter: Filter, signal: AbortSignal): Promis
   // The summary is the one request the page cannot be assembled without.
   if (r.summary.status === "rejected") throw r.summary.reason;
   const summary = r.summary.value;
-
-  // A 401 anywhere means the whole page is unauthenticated; empty cards
-  // would render a healthy server as a team that did no work.
-  for (const res of Object.values(r)) {
-    if (res.status === "rejected" && res.reason instanceof UnauthorizedError) {
-      throw res.reason;
-    }
-  }
 
   const failed = Object.entries(r)
     .filter(([, res]) => res.status === "rejected")

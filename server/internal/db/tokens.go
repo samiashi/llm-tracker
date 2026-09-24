@@ -51,9 +51,8 @@ func (d *DB) TokenLogin(ctx context.Context, token string) (string, bool, error)
 type Revoked struct{ Tokens, Machines, Accounts int64 }
 
 // RevokeTokens revokes every live token issued to login and releases the
-// machines and accounts it claimed. Enrolment checks membership once, so this
-// is how someone who leaves the org stops uploading, and the release is how a
-// laptop that changes hands can upload for its next owner.
+// machines and accounts it claimed. The release is how a machine enrolled
+// under one GitHub login can upload under another.
 func (d *DB) RevokeTokens(ctx context.Context, login string) (Revoked, error) {
 	var r Revoked
 	tx, err := d.begin(ctx)

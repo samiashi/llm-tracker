@@ -1,7 +1,7 @@
 GO       = go
 BIN      = bin
-# := rather than ?=, so a VERSION exported by a shell or a sourced .env cannot
-# stamp a dirty build as a release. `make VERSION=v1.4.0 ...` still overrides.
+# := rather than ?=, so a VERSION exported by a shell cannot stamp a dirty
+# build as a release. `make VERSION=v1.4.0 ...` still overrides.
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X main.version=$(VERSION)
 GOPKGS   = ./schema/... ./agent/... ./server/...
@@ -71,11 +71,9 @@ tools:
 	@command -v golangci-lint >/dev/null || { echo "install golangci-lint: brew install golangci-lint"; exit 1; }
 	cd dashboard && npm ci --silent
 
-# Without .env the server is local development: loopback only, no sign-in.
-# .env (see .env.example) turns on GitHub sign-in.
+# The dashboard at http://127.0.0.1:8790, with the database in the checkout.
 run-server:
-	if [ -f .env ]; then set -a && . ./.env && set +a; fi && \
-		cd server && $(GO) run . -v -db ../llm-tracker.db
+	cd server && $(GO) run . -v -db ../llm-tracker.db
 
 # Keeps dist/.gitkeep, which //go:embed needs to compile. -exec rm, not
 # -delete: -delete implies -depth on BSD find, and the ! -name guard then fails

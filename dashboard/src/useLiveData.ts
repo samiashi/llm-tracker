@@ -1,4 +1,3 @@
-import { UnauthorizedError } from "@/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** How often to re-fetch while the tab is visible. */
@@ -7,8 +6,6 @@ export const POLL_MS = 60_000;
 export const STALE_MS = 5 * 60_000;
 
 type LiveState<T> = {
-  /** The last failure was an expired session rather than an outage: it needs a login, not a retry. */
-  unauthorized: boolean;
   data: T | null;
   /** What the last load threw, or null. Kept raw so the page can tell an outage from a rejection. */
   error: unknown;
@@ -36,9 +33,8 @@ export function useLiveData<T>(
     key: string;
     data: T | null;
     error: unknown;
-    unauthorized: boolean;
     updatedAt: number | null;
-  }>({ key: "", data: null, error: null, unauthorized: false, updatedAt: null });
+  }>({ key: "", data: null, error: null, updatedAt: null });
   const [refreshing, setRefreshing] = useState(false);
 
   // Assigned in an effect: a ref written during render is a side effect React may discard.
@@ -70,7 +66,6 @@ export function useLiveData<T>(
           key: forKey,
           data,
           error: null,
-          unauthorized: false,
           updatedAt: Date.now(),
         });
       })
@@ -85,7 +80,6 @@ export function useLiveData<T>(
           key: forKey,
           ...(forKey === r.key ? null : { data: null, updatedAt: null }),
           error: e,
-          unauthorized: e instanceof UnauthorizedError,
         }));
       })
       .finally(() => {
@@ -137,7 +131,6 @@ export function useLiveData<T>(
   return {
     data: result.data,
     error: result.error,
-    unauthorized: result.unauthorized,
     loading: result.key !== key,
     updatedAt: result.updatedAt,
     refreshing,

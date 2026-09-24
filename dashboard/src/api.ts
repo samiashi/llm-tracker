@@ -140,14 +140,6 @@ export const MATRIX_ROWS = 12;
  */
 const REQUEST_TIMEOUT_MS = 30_000;
 
-/** An expired session: the page offers the login rather than reporting an outage. */
-export class UnauthorizedError extends Error {
-  constructor() {
-    super("authentication required");
-    this.name = "UnauthorizedError";
-  }
-}
-
 /** The server answered, with an error status: not an outage, and not the same failure as one. */
 export class HttpError extends Error {
   readonly status: number;
@@ -169,7 +161,6 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(path, {
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
-  if (r.status === 401) throw new UnauthorizedError();
   if (!r.ok) {
     let detail = "";
     try {

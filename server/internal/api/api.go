@@ -21,15 +21,13 @@ type Server struct {
 	// Version is this build's release tag: returned on every ingest so an
 	// agent can tell it is behind, and to the dashboard as the upgrade target.
 	Version string
-	// Enroll decides who may enrol, which is how every machine gets its
+	// Enroll names who is enrolling, which is how every machine gets its
 	// ingest token.
 	Enroll Verifier
-
-	enrolments limiter
 }
 
 // Routes builds the mux. WithSecurityHeaders is applied by main, around the
-// outer mux, so /auth is covered too.
+// gate, so its refusals carry the headers too.
 func (s *Server) Routes(spa http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	allowed := map[string][]string{}
@@ -340,7 +338,6 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	// store one and serve it to the next requester. Set here, not only as
 	// WithSecurityHeaders' default, so no wrapper can relax it.
 	h.Set("Cache-Control", "no-store")
-	addVary(h, "Cookie")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
