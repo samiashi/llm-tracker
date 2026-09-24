@@ -3,8 +3,8 @@
   <title>llm-tracker</title>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FF8A6B"/>
-      <stop offset="1" stop-color="#E5533D"/>
+      <stop offset="0" stop-color="#62A3F2"/>
+      <stop offset="1" stop-color="#2A78D6"/>
     </linearGradient>
     <!-- The top block of the tallest column fades out: usage still accruing. -->
     <linearGradient id="fade" x1="0" y1="1" x2="0" y2="0">
