@@ -21,10 +21,8 @@ import (
 // test that gates the dashboard -- and issues an ingest token of this
 // machine's own.
 //
-// gh is signed in wherever the agent was installed, since install.sh fetches
-// the private release through it. The server spends the GitHub token on that
-// check and keeps nothing of it; the token it issues can only upload, and its
-// -revoke withdraws it.
+// The server spends the GitHub token on that check and keeps nothing of it;
+// the token it issues can only upload, and its -revoke withdraws it.
 func cmdEnroll(dataDir, server string, log *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()

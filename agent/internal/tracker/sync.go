@@ -371,5 +371,5 @@ func (c *Client) noteServerVersion(server string) {
 	c.Log.Warn("the server is on a newer release than this agent; usage may be "+
 		"collected with an older adapter set",
 		"agent", c.Version, "server", server,
-		"upgrade", "llm-tracker-agent upgrade")
+		"fix", "make build, then bin/llm-tracker-agent install")
 }

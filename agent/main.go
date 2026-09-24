@@ -21,18 +21,13 @@ import (
 
 var version = "dev"
 
-// upgradeRepo is where releases come from. A constant rather than a flag: the
-// binary people run should not be pointable at someone else's releases by a
-// stray argument.
-const upgradeRepo = "samiashi/llm-tracker"
-
 // defaultServer is the tracker enroll joins. The team runs one, so installing
 // the agent names nothing; -server exists for developing the server.
 const defaultServer = "https://llm-tracker.example.com"
 
-// ghCommand runs the GitHub CLI against github.com. upgradeRepo pins the path,
-// not the host: gh takes the host from GH_HOST, and anything that set it
-// would choose the server a release or a token comes from.
+// ghCommand runs the GitHub CLI against github.com: gh takes the host from
+// GH_HOST, and anything that set it would choose the server a token comes
+// from.
 func ghCommand(ctx context.Context, args ...string) *exec.Cmd {
 	c := exec.CommandContext(ctx, "gh", args...)
 	c.Env = append(os.Environ(), "GH_HOST=github.com")
@@ -54,7 +49,7 @@ commands:
   sync        upload pending events to the server
   run         collect and sync on an interval (used by launchd)
   status      show local archive, accounts and configuration
-  enroll      join the team tracker as your GitHub login (install.sh runs it)
+  enroll      join the team tracker as your GitHub login
   sources     list every registered harness adapter
   probe       dry-run one adapter and report what it would extract
   rewind      re-read one source, upgrading rows in place (after adding a field)
@@ -62,7 +57,6 @@ commands:
   resync      re-read one source from scratch, discarding its rows first
   install     install and start the LaunchAgent
   uninstall   stop and remove the LaunchAgent
-  upgrade     replace this binary with the latest release, restart the collector
   version     print version
 
 scan, sync, rewind, resend and resync need the collector stopped; run while it
@@ -75,8 +69,6 @@ flags:
                     when developing the server
   -source <name>    rewind / resync: any registered source (see: sources)
   -yes              resync: skip the confirmation prompt
-  -force            upgrade: install the latest release even when it is older
-                    than this build
   -v                verbose logging
 `, defaultServer)
 }
@@ -87,7 +79,6 @@ func run() error {
 	server := fs.String("server", defaultServer, "tracker to enrol with")
 	source := fs.String("source", "", "source name for resync")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt on resync")
-	force := fs.Bool("force", false, "upgrade even to an older release")
 	verbose := fs.Bool("v", false, "verbose logging")
 	fs.Usage = usage
 
@@ -137,8 +128,6 @@ func run() error {
 	case "version":
 		fmt.Println(version)
 		return nil
-	case "upgrade":
-		return cmdUpgrade(log, *dataDir, *force)
 	case "scan":
 		return cmdScan(*dataDir, home, log)
 	case "sync":
@@ -256,8 +245,8 @@ func humanBytes(n int64) string {
 
 // collectorDataDir is the directory a command acts on: -data if given, else
 // the one the installed collector's LaunchAgent names, else the default. A
-// collector installed with -data would otherwise be enrolled, queried,
-// reinstalled and upgraded against a store it never reads.
+// collector installed with -data would otherwise be enrolled, queried and
+// reinstalled against a store it never reads.
 func collectorDataDir(dataFlag, home string) string {
 	if dataFlag != "" {
 		return dataFlag

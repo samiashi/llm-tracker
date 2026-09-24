@@ -155,3 +155,43 @@ func TestCommandsDefaultToTheInstalledCollectorsDataDir(t *testing.T) {
 		t.Error("enroll wrote ~/.llm-tracker although the collector runs on another directory")
 	}
 }
+
+// A collector installed with -data must be acted on in its own directory:
+// reinstalled on the default, it comes back on a store with no
+// configuration and stops uploading.
+func TestCommandsActOnTheFlagThenTheInstalledCollectorThenTheDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if got := collectorDataDir("", home); got != filepath.Join(home, ".llm-tracker") {
+		t.Errorf("with nothing installed: %q, want the default", got)
+	}
+
+	agents := filepath.Join(home, "Library", "LaunchAgents")
+	if err := os.MkdirAll(agents, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	plist := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.github.samiashi.llm-tracker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/srv/tracker/bin/llm-tracker-agent</string>
+    <string>run</string>
+    <string>-data</string>
+    <string>/srv/tracker</string>
+  </array>
+</dict>
+</plist>
+`
+	if err := os.WriteFile(filepath.Join(agents, "io.github.samiashi.llm-tracker.plist"), []byte(plist), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := collectorDataDir("", home); got != "/srv/tracker" {
+		t.Errorf("installed with -data /srv/tracker: %q, want the installed directory", got)
+	}
+	if got := collectorDataDir("/elsewhere", home); got != "/elsewhere" {
+		t.Errorf("with -data given: %q, want the flag's directory", got)
+	}
+}

@@ -11,11 +11,7 @@ GOPKGS   = ./schema/... ./agent/... ./server/...
 # that 404s, with no error at build time.
 .NOTPARALLEL:
 
-# No built-in suffix rules, which nothing here uses: one of them answers
-# `make install` by copying install.sh to ./install.
-.SUFFIXES:
-
-.PHONY: all build agent server dashboard image prices test test-go test-dashboard lint lint-go lint-dashboard fmt clean run-server tools
+.PHONY: all build agent server dashboard prices test test-go test-dashboard lint lint-go lint-dashboard fmt clean run-server tools
 
 all: build
 
@@ -36,10 +32,6 @@ agent:
 server:
 	cd server && CGO_ENABLED=0 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o ../$(BIN)/llm-tracker-server .
 
-## image: the server image, stamped with this checkout's version
-image:
-	docker build --build-arg VERSION=$(VERSION) -t llm-tracker-server:$(VERSION) .
-
 ## prices: regenerate the embedded price table from LiteLLM's database
 prices:
 	python3 schema/scripts/gen_prices.py
@@ -51,7 +43,7 @@ prices:
 ## could replay a result cached under another zone.
 test: test-go test-dashboard
 
-# CI and the release workflow run these halves as separate jobs.
+# CI runs these halves as separate jobs.
 test-go:
 	TZ=UTC $(GO) test -count=1 $(GOPKGS)
 	TZ=America/Santiago $(GO) test -count=1 $(GOPKGS)

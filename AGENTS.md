@@ -24,7 +24,6 @@ make test     # Go under UTC and America/Santiago (-count=1), the price generato
 make lint     # static analysis, both halves — must be clean
 make fmt      # format Go and the dashboard in place
 make prices   # regenerate schema/prices.json from LiteLLM
-make image    # the server image, stamped with git describe
 ```
 
 Always run `make lint` and `make test` before finishing. Both are clean on
@@ -206,12 +205,14 @@ worse than a gap.
 
 Three, and conflating them is the trap:
 
-- **Release tag** (`v1.4.0`) — which build is installed, set from
+- **Release tag** (`v1.4.0`) — which build is running, set from
   `git describe` at build time. `schema.ReleaseVersion` parses `X.Y.Z`, with or
   without the `v`, and nothing else: `dev` and `<sha>-dirty` are not releases.
-  One tag builds both halves (see Releasing).
-- **`schema.Version`** — the wire format. Old agents stay installed on
-  teammates' machines for months, so the server keeps accepting older values
+  Build both halves from one checkout: the server returns its own version on
+  every ingest, which is how an agent learns it is stale, and what the
+  dashboard's upgrade target is.
+- **`schema.Version`** — the wire format. An installed agent runs its own copy
+  until `install` replaces it, so the server keeps accepting older values
   rather than rejecting them.
 - **`CollectorVersion`** — what the collector knows how to read. Both stores
   keep it per row, and a newer collector's reading of an id replaces an older
@@ -224,89 +225,6 @@ on a newer release, and the dashboard marks it against the server's release. It
 collects with an older adapter set, which reads as smaller numbers rather than
 as an error — but an agent that stopped uploading because it was out of date
 would turn that into missing data.
-
-## Releasing
-
-A release is a tag; `.github/workflows/release.yml` does the rest.
-
-```bash
-make lint && make test          # both clean, or do not tag
-git switch main && git pull     # and CI green on this commit, darwin job included
-git tag v1.4.0 && git push origin v1.4.0
-```
-
-1. **`verify`** checks the tag is exactly `vX.Y.Z`, refuses a tag on a commit
-   `main` has not reached, and one whose release is already published (failing
-   closed on anything but a clear 404), and runs
-   `make lint-go test-go lint-dashboard test-dashboard`, the recipes `make lint`
-   and `make test` run locally. It does not run CI's darwin job, so tag only a
-   commit whose CI is green. The on-main check runs from the tagged commit's
-   own workflow, so it stops a mistake; who may push a `v*` tag at all is for
-   a tag ruleset on the repository to limit.
-2. **`agent` and `image`** cross-compile from Linux: `CGO_ENABLED=0` and a
-   pure-Go SQLite driver mean no macOS runner, which bills at ten times the
-   rate. `agent` holds a read-only token and hands its files to `publish` as
-   workflow artifacts, kept 7 days; `image` pushes both architectures
-   untagged, by digest.
-3. **`publish`** checks each `.sha256` against its binary, creates the draft
-   release or reuses its own from an earlier attempt (recognised by
-   `Built from <sha>.` in its body), uploads, checks that exactly the promised
-   assets are attached and that the tag still points at the commit, tags the
-   image, and only then makes the release public — so nobody tracking the
-   latest release gets one whose other half never built — without making it
-   Latest. **`latest`** then marks the highest published release Latest and
-   points `:latest` at it, and reads the releases again afterwards, marking
-   again if a higher one appeared: two tags pushed together each find the
-   other still a draft. A backport's run marks nothing. Only these two jobs
-   can write a release.
-4. **`deploy`** runs `deploy/gcp/deploy.sh upgrade` for the release `latest`
-   marked, never a backport, and only once `create` has stored the `GCP_*`
-   repository variables. It skips if its tag is no longer Latest when its turn
-   comes, so a lower release that waited behind a higher one never moves the
-   server back. It holds no key: Workload Identity Federation
-   exchanges GitHub's OIDC token for a deploy service account's short-lived
-   credentials, and accepts only this repository's `release.yml` on a `v*`
-   tag. That account can snapshot the disk, set the VM's metadata and SSH in
-   as root through IAP, which is what `upgrade` does.
-
-Runs for one tag share a concurrency group, and every checkout sets
-`persist-credentials: false`.
-
-| Artefact                                                      | Targets                                                                        |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `llm-tracker-agent-darwin-{arm64,amd64}`                    | plus a `.sha256` for each                                                      |
-| `ghcr.io/<owner>/llm-tracker-server`                        | `linux/amd64`, `linux/arm64`; `:vX.Y.Z`, and `:latest` for the highest release |
-
-Rules, each load-bearing:
-
-**One tag ships both halves.** The server returns its own version on every
-ingest, which is how an agent learns it is stale without reaching GitHub, and
-what the dashboard's upgrade target is. Release them separately and the
-server's version stops meaning anything.
-
-**The tag must be exactly `vX.Y.Z`.** Anything `schema.ReleaseVersion` cannot
-parse — `v1.4`, `v1.4.0-rc1` — silently turns off the staleness check for the
-whole fleet, and `agent upgrade` refuses it without `-force`. `on.push.tags` is
-a glob matched before any expression runs, which is why `verify` checks the
-shape.
-
-**Never re-tag.** `install.sh` and `agent upgrade` verify against the published
-`.sha256`, so moving a tag makes every agent refuse the download it now
-disagrees with. Cut a patch instead. `verify` and `publish` refuse a published
-tag, and `publish` refuses a draft another commit built or a tag that moved
-during the run; turn on GitHub's immutable releases in the repository settings
-to enforce the rule outright.
-
-**The image cross-compiles, it does not emulate.** The Dockerfile pins both
-build stages to `$BUILDPLATFORM` and passes `$TARGETARCH` to `go build`, so one
-Linux runner produces both architectures. Dropping those turns a one-minute
-build into ten under QEMU. It builds the server module alone, not the
-workspace — `server/go.mod` replaces `schema` with `../schema` — so an
-agent-only change does not rebuild the image.
-
-**Nothing is manual afterwards.** `install.sh` and `agent upgrade` both read
-the latest release through `gh`, and `deploy` upgrades the server. There is no
-separate publish or deploy step.
 
 ## Deploying the server
 
@@ -328,17 +246,8 @@ provision but a disk.
   roll forward with a new migration. And never edit one that has shipped.
 - **One writer, ever.** SQLite on a volume means exactly one instance. Two
   gives you two divergent databases and no error.
-- **It needs a persistent filesystem and a long-lived process** — the daily
-  prune is a goroutine — so serverless hosts are out.
 - **Back up the `.db`** — and its `-wal`, or use `sqlite3 .backup`, which is
   consistent without stopping the server.
-
-`deploy/gcp/deploy.sh` sets up and upgrades the deployment on one Compute
-Engine VM; the README's Running the tracker section says what it creates. Its
-`startup.sh` runs on every boot, and must never let a container start before
-the data disk is mounted: `/mnt/disks` is tmpfs there, and a server started on
-the empty directory would take uploads into memory and lose them, while the
-agents mark them sent.
 
 The server has two gates, chosen by its settings. With all of
 `LLM_TRACKER_GITHUB_{CLIENT_ID,CLIENT_SECRET,ORG}`, `LLM_TRACKER_BASE_URL`

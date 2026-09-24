@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,17 +31,10 @@ func run() int {
 	dsn := flag.String("db", "llm-tracker.db", "sqlite path")
 	retainDays := flag.Int("retain", 0,
 		"delete raw events older than N days, rolling each day up first; 0 keeps everything")
-	healthcheck := flag.Bool("healthcheck", false, "probe a running server on this host, then exit")
 	revoke := flag.String("revoke", "",
 		"revoke every ingest token enrolled by this GitHub login and release its machines, then exit")
 	verbose := flag.Bool("v", false, "verbose logging")
 	flag.Parse()
-
-	// Before anything is opened: a probe must not touch the database the
-	// running server has open.
-	if *healthcheck {
-		return probe(*addr)
-	}
 
 	level := slog.LevelInfo
 	if *verbose {
@@ -208,39 +200,6 @@ func newHandler(srv *api.Server, g gate, spa http.Handler) http.Handler {
 	g.Routes(mux)
 	mux.Handle("/", srv.Routes(spa))
 	return api.WithSecurityHeaders(api.WithGzip(g.Middleware(mux)))
-}
-
-// probe asks a server already running in this container whether it is serving.
-// The binary checks itself because the distroless runtime image has no shell,
-// curl or wget for a HEALTHCHECK to run.
-//
-// It dials loopback on the listen port: a server bound to 0.0.0.0 answers on
-// 127.0.0.1 inside its own container, and dialling 0.0.0.0 is not portable.
-func probe(addr string) int {
-	_, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "healthcheck: cannot read a port from", addr)
-		return 1
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"http://127.0.0.1:"+port+"/healthz", nil)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "healthcheck:", err)
-		return 1
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "healthcheck:", err)
-		return 1
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintln(os.Stderr, "healthcheck: status", resp.StatusCode)
-		return 1
-	}
-	return 0
 }
 
 // maintain reprices stored events for this build, then, when retain is set,
