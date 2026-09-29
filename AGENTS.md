@@ -232,8 +232,16 @@ would turn that into missing data.
 One binary and one SQLite file, on the Mac it tracks. No external database,
 nothing to set up.
 
+- **`install` runs it as a LaunchAgent**, like the collector: from its own copy
+  of the binary in `~/.llm-tracker-server`, with `llm-tracker.db` and
+  `server.log` beside it, outside the checkout because macOS may not let a
+  LaunchAgent read `~/Documents`. Every command defaults to that database,
+  `make run-server` and `-revoke` included: a second server on another database
+  would take the collector's uploads on the same port, and they would never
+  reach the installed one.
 - **Migrations run themselves** — `goose.Up` on `db.Open`, from an embedded FS.
-  Upgrading is replacing the binary and restarting.
+  Upgrading is `make build` and `install` again, which replaces the job's copy
+  and restarts it.
 - **Stored costs follow the build.** Cost is resolved at ingest, so each new
   build, and a changed price table under the same build, reprices stored
   events once, in the background after it starts (`db.RepriceIfChanged`). Every write is conditional on the row still holding
@@ -245,8 +253,8 @@ nothing to set up.
   keep retiring re-keyed rows as agents upgrade, so never plan a rollback that
   crosses one;
   roll forward with a new migration. And never edit one that has shipped.
-- **Back up the `.db`** — and its `-wal`, or use `sqlite3 .backup`, which is
-  consistent without stopping the server.
+- **Back up `~/.llm-tracker-server/llm-tracker.db`** — and its `-wal`, or use
+  `sqlite3 .backup`, which is consistent without stopping the server.
 
 The dashboard has no sign-in, so the server listens on loopback and refuses
 to start on an address another machine could reach. It serves a request only
@@ -256,8 +264,8 @@ open to whoever GitHub names. There is no shared token and no other mode.
 
 Retention is off by default. Pruning rolls each day up before deleting its
 events, and a rolled-up day never returns to per-event detail: turning pruning
-off only lets agents deliver what it refused. `-retain N` turns it on, keeping
-N days of raw events.
+off only lets agents deliver what it refused. `install -retain N` turns it on,
+keeping N days of raw events.
 
 ## Style
 

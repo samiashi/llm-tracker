@@ -1,4 +1,5 @@
 // Command llm-tracker-server ingests agent batches and serves the dashboard.
+// `install` runs it as a LaunchAgent, from its own copy in ~/.llm-tracker-server.
 package main
 
 import (
@@ -6,10 +7,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,27 +25,123 @@ import (
 
 var version = "dev"
 
+// defaultAddr is where the dashboard is, and where the collector uploads.
+const defaultAddr = "127.0.0.1:8790"
+
 // main exits with run's result rather than inside it: os.Exit skips deferred
-// functions, so every exit path in run still closes the database.
-func main() { os.Exit(run()) }
+// functions, so every exit path still closes the database.
+func main() { os.Exit(run(os.Args[1:])) }
 
-func run() int {
-	addr := flag.String("addr", "127.0.0.1:8790", "listen address")
-	dsn := flag.String("db", "llm-tracker.db", "sqlite path")
-	retainDays := flag.Int("retain", 0,
-		"delete raw events older than N days, rolling each day up first; 0 keeps everything")
-	revoke := flag.String("revoke", "",
-		"revoke every ingest token enrolled by this GitHub login and release its machines, then exit")
-	verbose := flag.Bool("v", false, "verbose logging")
-	flag.Parse()
+func usage() {
+	fmt.Fprintf(os.Stderr, `llm-tracker-server -- ingest API and dashboard, at http://%s
 
+commands:
+  (none)      serve in the foreground
+  install     install and start the LaunchAgent: serve now and at every login
+  uninstall   stop and remove the LaunchAgent; the database stays
+
+flags:
+  -db <path>         database (default: the installed server's,
+                     ~/.llm-tracker-server/llm-tracker.db)
+  -retain <days>     keep this many days of raw events, rolling each older day
+                     up first; 0, the default, keeps everything. install takes
+                     it too, and the job keeps it
+  -revoke <login>    revoke every ingest token this GitHub login enrolled and
+                     release its machines, then exit
+  -addr <host:port>  listen address, loopback only (default %s)
+  -v                 verbose logging
+`, defaultAddr, defaultAddr)
+}
+
+// options are the flags a command runs with.
+type options struct {
+	addr, db, revoke string
+	retain           int
+	verbose          bool
+}
+
+// parseArgs splits a command line into its command, "" to serve, and its
+// options. install takes -retain alone and uninstall nothing: the job serves
+// on the default address and database, so any other flag would be dropped
+// without a word.
+func parseArgs(args []string, home string) (string, options, error) {
+	var o options
+	fs := flag.NewFlagSet("llm-tracker-server", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&o.addr, "addr", defaultAddr, "")
+	fs.StringVar(&o.db, "db", defaultDB(home), "")
+	fs.IntVar(&o.retain, "retain", 0, "")
+	fs.StringVar(&o.revoke, "revoke", "", "")
+	fs.BoolVar(&o.verbose, "v", false, "")
+
+	cmd := ""
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		cmd, args = args[0], args[1:]
+	}
+	if err := fs.Parse(args); err != nil {
+		return "", o, err
+	}
+	if fs.NArg() > 0 {
+		return "", o, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	switch cmd {
+	case "":
+		return cmd, o, nil
+	case "install", "uninstall":
+		var err error
+		fs.Visit(func(f *flag.Flag) {
+			if err == nil && (cmd == "uninstall" || f.Name != "retain") {
+				err = fmt.Errorf("%s does not take -%s", cmd, f.Name)
+			}
+		})
+		return cmd, o, err
+	}
+	return "", o, fmt.Errorf("unknown command %q", cmd)
+}
+
+func run(args []string) int {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	cmd, o, err := parseArgs(args, home)
+	if err != nil {
+		usage()
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		fmt.Fprintln(os.Stderr, "\nerror:", err)
+		return 2
+	}
+	switch cmd {
+	case "install":
+		err = cmdInstall(home, o.retain)
+	case "uninstall":
+		err = cmdUninstall(home)
+	default:
+		return serve(o)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	return 0
+}
+
+func serve(o options) int {
 	level := slog.LevelInfo
-	if *verbose {
+	if o.verbose {
 		level = slog.LevelDebug
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
-	database, err := db.Open(*dsn)
+	// The default database's directory does not exist before the first run.
+	if err := os.MkdirAll(filepath.Dir(o.db), 0o700); err != nil {
+		log.Error("open database", "err", err)
+		return 1
+	}
+	database, err := db.Open(o.db)
 	if err != nil {
 		log.Error("open database", "err", err)
 		return 1
@@ -49,22 +149,22 @@ func run() int {
 	defer database.Close()
 	log.Info("price table", "version", database.PriceTableVersion())
 
-	if *revoke != "" {
-		r, err := database.RevokeTokens(context.Background(), *revoke)
+	if o.revoke != "" {
+		r, err := database.RevokeTokens(context.Background(), o.revoke)
 		if err != nil {
 			log.Error("revoke", "err", err)
 			return 1
 		}
 		if r == (db.Revoked{}) {
-			log.Warn("nothing to revoke", "login", *revoke, "note", "logins are GitHub usernames")
+			log.Warn("nothing to revoke", "login", o.revoke, "note", "logins are GitHub usernames")
 			return 0
 		}
-		log.Info("revoked", "login", *revoke, "tokens", r.Tokens,
+		log.Info("revoked", "login", o.revoke, "tokens", r.Tokens,
 			"machines_released", r.Machines, "accounts_released", r.Accounts)
 		return 0
 	}
 
-	if err := loopbackOnly(*addr); err != nil {
+	if err := loopbackOnly(o.addr); err != nil {
 		log.Error("refusing to start", "err", err)
 		return 1
 	}
@@ -78,9 +178,9 @@ func run() int {
 	// The floor ingest enforces follows the same switch: a server that keeps
 	// everything accepts everything, including the backlog its agents have
 	// been holding since it last pruned.
-	database.Pruning = *retainDays > 0
-	go maintain(bgCtx, database, *retainDays, log)
-	if *retainDays == 0 {
+	database.Pruning = o.retain > 0
+	go maintain(bgCtx, database, o.retain, log)
+	if o.retain == 0 {
 		if day, err := database.RollupsBefore(context.Background()); err == nil && day != "" {
 			log.Info("retention is off: agents may now deliver what pruning refused, "+
 				"but days already rolled up stay rolled up", "rolled_up_before", day)
@@ -88,7 +188,7 @@ func run() int {
 	}
 
 	httpSrv := &http.Server{
-		Addr:    *addr,
+		Addr:    o.addr,
 		Handler: newHandler(srv, g, web.Handler()),
 		// Every phase is bounded, or a client dripping its body or holding a
 		// keep-alive open keeps a goroutine and a socket as long as it likes.
@@ -103,9 +203,12 @@ func run() int {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", *addr, "version", version, "db", *dsn)
+		log.Info("listening", "addr", o.addr, "version", version, "db", o.db)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("serve", "err", err)
+			if errors.Is(err, syscall.EADDRINUSE) {
+				log.Error("another server holds the address; the installed one stops with: llm-tracker-server uninstall")
+			}
 			serveErr <- err
 		}
 		close(serveErr)

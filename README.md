@@ -25,28 +25,24 @@ You need macOS, Go 1.27, Node 24, and the GitHub CLI signed in
 ```bash
 git clone https://github.com/samiashi/llm-tracker.git && cd llm-tracker
 make build                          # the dashboard, then both binaries into bin/
-./bin/llm-tracker-server            # the dashboard at http://127.0.0.1:8790; leave it running
-```
-
-Then, in another terminal:
-
-```bash
+./bin/llm-tracker-server install    # the dashboard at http://127.0.0.1:8790, now and at every login
 ./bin/llm-tracker-agent enroll      # join the server as your GitHub login
 ./bin/llm-tracker-agent install     # collect and upload at login and every 5 minutes
 ```
 
-The server keeps its database, `llm-tracker.db`, in the directory it was
-started from. While it is stopped the collector keeps collecting, and it
-uploads the backlog once the server is back.
+Both run in the background as LaunchAgents, each from its own copy of its
+binary: the server with its database and log in `~/.llm-tracker-server`, the
+collector with its archive in `~/.llm-tracker`. While the server is stopped the
+collector keeps collecting, and it uploads the backlog once the server is back.
 
 ```bash
 ./bin/llm-tracker-agent status      # running? last upload?
 ./bin/llm-tracker-agent uninstall   # stop; rm -rf ~/.llm-tracker also deletes the local archive
+./bin/llm-tracker-server uninstall  # stop; the database stays in ~/.llm-tracker-server
 ```
 
-To update, pull, run `make build`, restart the server, and run
-`./bin/llm-tracker-agent install` again: the collector runs its own copy of the
-binary, which only `install` replaces.
+To update, pull, run `make build`, and run both installs again: each runs its
+own copy of its binary, which only `install` replaces.
 
 ## What is tracked
 
@@ -96,6 +92,9 @@ make lint                       # must be clean; needs golangci-lint
 make run-server                 # the server from source, with verbose logs
 cd dashboard && npm run dev     # the dashboard with hot reload at http://127.0.0.1:5178
 ```
+
+`make run-server` serves on the installed server's address and database, so run
+`./bin/llm-tracker-server uninstall` first, and install it again afterwards.
 
 [AGENTS.md](AGENTS.md) holds the invariants: the rules that, broken, produce
 wrong numbers rather than errors. Read it before changing the adapters, the

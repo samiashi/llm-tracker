@@ -54,9 +54,9 @@ linters:
       # cannot, and left on they bury the ones that can.
       #
       # G304: no path opened comes from a request: each is derived from the
-      # user's home, the agent's own executable, or the operator's config.
+      # user's home, the binary's own executable, or the operator's config.
       # G204: no shell is invoked, and every exec argv is built from constants,
-      # os.Getuid() and paths the agent derives itself.
+      # os.Getuid() and paths the binaries derive themselves.
       # G201/G202: the only values formatted into SQL are package constants --
       # column lists and placeholders -- and dimensions resolved through an
       # allow-list; every value from a request is bound.

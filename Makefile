@@ -71,9 +71,11 @@ tools:
 	@command -v golangci-lint >/dev/null || { echo "install golangci-lint: brew install golangci-lint"; exit 1; }
 	cd dashboard && npm ci --silent
 
-# The dashboard at http://127.0.0.1:8790, with the database in the checkout.
+# The server from source, on the installed server's address and database:
+# stop that one first (./bin/llm-tracker-server uninstall), and install it
+# again after.
 run-server:
-	cd server && $(GO) run . -v -db ../llm-tracker.db
+	cd server && $(GO) run . -v
 
 # Keeps dist/.gitkeep, which //go:embed needs to compile. -exec rm, not
 # -delete: -delete implies -depth on BSD find, and the ! -name guard then fails
