@@ -8,9 +8,9 @@ import (
 
 	"github.com/samiashi/llm-tracker/agent/internal/config"
 	"github.com/samiashi/llm-tracker/agent/internal/identity"
-	"github.com/samiashi/llm-tracker/agent/internal/launchd"
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 	"github.com/samiashi/llm-tracker/agent/internal/tracker"
+	"github.com/samiashi/llm-tracker/launchd"
 )
 
 func cmdStatus(dataDir string) error {
@@ -38,7 +38,7 @@ func cmdStatus(dataDir string) error {
 	// The verdict first: it is the only line most people want. From launchd,
 	// not the plist (see launchd.Running).
 	fmt.Println()
-	running, program, lerr := launchd.Running()
+	running, program, lerr := launchd.Running(collectorLabel)
 	for _, line := range daemonVerdict(dataDir, running, program, lerr) {
 		fmt.Println(line)
 	}
@@ -95,7 +95,7 @@ func daemonVerdict(dataDir string, running bool, program string, lerr error) []s
 		out = append(out, "daemon:   not installed (run: "+install+")")
 	case !running:
 		out = append(out, "daemon:   installed but NOT running",
-			"          launchctl print gui/$(id -u)/"+launchd.Label+"  # for why")
+			"          launchctl print gui/$(id -u)/"+collectorLabel+"  # for why")
 	default:
 		out = append(out, "daemon:   running")
 	}

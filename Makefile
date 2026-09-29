@@ -4,7 +4,7 @@ BIN      = bin
 # build as a release. `make VERSION=v1.4.0 ...` still overrides.
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X main.version=$(VERSION)
-GOPKGS   = ./schema/... ./agent/... ./server/...
+GOPKGS   = ./schema/... ./launchd/... ./agent/... ./server/...
 
 # Serial, always: vite empties server/internal/web/dist before writing it, so
 # a server build running beside it under -j embeds a half-written dashboard

@@ -3,6 +3,7 @@ module github.com/samiashi/llm-tracker/agent
 go 1.27
 
 require (
+	github.com/samiashi/llm-tracker/launchd v0.0.0-00010101000000-000000000000
 	github.com/samiashi/llm-tracker/schema v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	modernc.org/sqlite v1.59.0
@@ -18,5 +19,7 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+replace github.com/samiashi/llm-tracker/launchd => ../launchd
 
 replace github.com/samiashi/llm-tracker/schema => ../schema

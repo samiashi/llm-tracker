@@ -30,8 +30,8 @@ jobs:
           install-only: true
       - run: make lint-go test-go
 
-  # The agent is a macOS daemon: cross-compiling it proves it links, not that
-  # it runs.
+  # The agent is a macOS daemon, and launchd/ drives macOS's launchctl:
+  # cross-compiling them proves they link, not that they run.
   darwin:
     runs-on: macos-latest
     steps:
@@ -47,7 +47,7 @@ jobs:
           cache-dependency-path: |
             agent/go.sum
             server/go.sum
-      - run: go test ./schema/... ./agent/...
+      - run: go test ./schema/... ./launchd/... ./agent/...
 
   dashboard:
     runs-on: ubuntu-latest

@@ -7,11 +7,12 @@ changing anything under `schema/`, `agent/` or `server/internal/db/`.
 
 A Go daemon reads AI coding-agent session logs on a Mac and ships **token
 counts only** to a server on the same Mac, which embeds a React dashboard.
-Three modules plus a frontend:
+Four modules plus a frontend:
 
 ```
 schema/     event types + generated price table — imported by BOTH binaries
-agent/      collector daemon (adapters, local SQLite archive, sync, launchd)
+launchd/    installing a binary as a per-user LaunchAgent — used by BOTH
+agent/      collector daemon (adapters, local SQLite archive, sync)
 server/     ingest API, queries, embedded dashboard
 dashboard/  React 19 + Vite + Recharts
 ```

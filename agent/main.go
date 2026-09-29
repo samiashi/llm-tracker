@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/samiashi/llm-tracker/agent/internal/config"
-	"github.com/samiashi/llm-tracker/agent/internal/launchd"
 	"github.com/samiashi/llm-tracker/agent/internal/store"
 )
 
@@ -214,7 +213,7 @@ func lockedHint(err error, dataDir string) error {
 	return fmt.Errorf("%w -- normally the background collector.\n"+
 		"Stop it, run this command again, then restart it:\n"+
 		"  launchctl bootout gui/$(id -u)/%s\n"+
-		"  %s", err, launchd.Label, agentCmd(dataDir, "install"))
+		"  %s", err, collectorLabel, agentCmd(dataDir, "install"))
 }
 
 func humanTokens(n int64) string {
@@ -250,7 +249,7 @@ func collectorDataDir(dataFlag, home string) string {
 	if dataFlag != "" {
 		return dataFlag
 	}
-	if d := launchd.InstalledDataDir(); d != "" {
+	if d := installedDataDir(); d != "" {
 		return d
 	}
 	return defaultDataDir(home)
