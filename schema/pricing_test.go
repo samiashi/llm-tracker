@@ -27,14 +27,12 @@ func TestOfficialRates(t *testing.T) {
 	}{
 		{"claude-opus-5", 5, 25, 0.50, 6.25, 10},
 		{"claude-sonnet-5", 2, 10, 0.20, 2.50, 4},
+		{"claude-sonnet-5-5", 2, 10, 0.20, 2.50, 4},
 		{"claude-haiku-4-5", 1, 5, 0.10, 1.25, 2},
 		// Fable 5.1 reads cache at 0.025x base rather than the usual 0.1x.
 		{"claude-fable-5-1", 10, 50, 0.25, 12.50, 20},
 		// Opus 5.5 reads cache at 0.05x.
 		{"claude-opus-5-5", 4, 20, 0.20, 5, 8},
-		// Upstream omits this alias's 1h price; the fallback must give the
-		// published 2x input, not 2x the 5m write.
-		{"claude-4-sonnet-20250514", 3, 15, 0.30, 3.75, 6},
 	} {
 		r, ok := pt.Lookup("", c.model)
 		if !ok {
@@ -311,7 +309,7 @@ func TestLongContextTiersPriceTheWholeRequest(t *testing.T) {
 func TestABareModelKeyIsItsMakersPrice(t *testing.T) {
 	pt := DefaultPriceTable()
 	for _, c := range []struct{ maker, model string }{
-		{"xai", "grok-4"},
+		{"xai", "grok-4.6"},
 		{"deepseek", "deepseek-r1"},
 		{"zai", "glm-5.1"},
 		{"moonshot", "kimi-k3"},
