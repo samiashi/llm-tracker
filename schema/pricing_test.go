@@ -18,7 +18,7 @@ func TestGLMNotPricedAsAnthropic(t *testing.T) {
 	}
 }
 
-// Rates must match Anthropic's published price list.
+// Rates must match their makers' published price lists.
 func TestOfficialRates(t *testing.T) {
 	pt := DefaultPriceTable()
 	for _, c := range []struct {
@@ -33,6 +33,8 @@ func TestOfficialRates(t *testing.T) {
 		{"claude-fable-5-1", 10, 50, 0.25, 12.50, 20},
 		// Opus 5.5 reads cache at 0.05x.
 		{"claude-opus-5-5", 4, 20, 0.20, 5, 8},
+		// OpenAI prices a single cache write, so a 1h write bills as a 5m one.
+		{"gpt-6.1-sol", 2, 10, 0.10, 2.50, 2.50},
 	} {
 		r, ok := pt.Lookup("", c.model)
 		if !ok {
