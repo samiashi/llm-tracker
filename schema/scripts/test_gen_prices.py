@@ -28,13 +28,13 @@ UPSTREAM = {
     "claude-opus-5-5": spec("anthropic", 4, 20, 0.2, 5, 8),
     "claude-fable-5-1": spec("anthropic", 10, 50, 0.25, 12.5, 20),
     "gpt-5": spec("openai", 1.25, 10, 0.125),
-    "claude-sonnet-4-5": spec(
-        "anthropic", 3, 15, 0.3, 3.75, 6,
-        input_cost_per_token_above_200k_tokens=6,
-        output_cost_per_token_above_200k_tokens=22.5,
-        cache_read_input_token_cost_above_200k_tokens=0.6,
-        cache_creation_input_token_cost_above_200k_tokens=7.5,
-        cache_creation_input_token_cost_above_1hr_above_200k_tokens=12),
+    "claude-haiku-5-5": spec(
+        "anthropic", 0.1, 0.5, 0.01, 0.125, 0.2,
+        input_cost_per_token_above_100k_tokens=0.5,
+        output_cost_per_token_above_100k_tokens=2.5,
+        cache_read_input_token_cost_above_100k_tokens=0.05,
+        cache_creation_input_token_cost_above_100k_tokens=0.625,
+        cache_creation_input_token_cost_above_1hr_above_100k_tokens=1),
     "gpt-5.6-sol": spec(
         "openai", 4, 20, 0.4, 5,
         input_cost_per_token_above_272k_tokens=8,
@@ -92,6 +92,16 @@ class GenPricesTest(unittest.TestCase):
                     self.check(raw)
             else:
                 self.check(raw)
+
+    def test_a_retired_endpoint_does_not_count_towards_the_shrink(self):
+        # Upstream deleting a whole endpoint on purpose is not a broken fetch.
+        raw = {**UPSTREAM, **{f"openai/gpt-x{i}": spec("openai", 1, 2) for i in range(10)}}
+        os.makedirs(os.path.dirname(gen.PRICES))
+        previous = {f"openai|m{i}": {} for i in range(10)}
+        previous.update({f"openrouter|anthropic/m{i}": {} for i in range(90)})
+        with open(gen.PRICES, "w") as f:
+            json.dump({"rates": previous}, f)
+        self.check(raw)
 
     def test_a_renamed_tier_field_is_refused(self):
         raw = copy.deepcopy(UPSTREAM)

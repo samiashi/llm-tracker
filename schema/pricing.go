@@ -3,6 +3,7 @@ package schema
 import (
 	_ "embed"
 	"encoding/json"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -112,18 +113,35 @@ var localRuntimes = map[string]bool{
 	"lemonade":       true,
 }
 
+// resoldAtListPrice names, per reseller, the makers whose models it serves at
+// the maker's own price. OpenRouter routes a closed model to its maker, so its
+// price is the maker's list price; an open-weight one goes to whichever host
+// it picks per request, at up to half the maker's rate, so no fixed price is
+// right and those stay unpriced unless the harness recorded a cost.
+var resoldAtListPrice = map[string]map[string]bool{
+	"openrouter": {"anthropic": true, "openai": true, "google": true, "x-ai": true},
+}
+
+// versionDot matches a dot between version digits: OpenRouter's
+// "claude-opus-4.5" is Anthropic's "claude-opus-4-5".
+var versionDot = regexp.MustCompile(`(\d)\.(\d)`)
+
 // Lookup resolves a rate for an endpoint+model pair.
 //
-// It tries the exact pair, then a local runtime's zero, then the model alone --
-// its maker's price, see FIRST_PARTY in gen_prices.py -- and then the model as
-// a dated variant of a listed one. ok is false when nothing matched, and
-// callers must surface that rather than treating a zero rate as free.
+// It tries the exact pair, then a local runtime's zero, then a reseller's
+// "maker/model" at its maker's price, then the model alone -- its maker's
+// price, see FIRST_PARTY in gen_prices.py -- and then the model as a dated
+// variant of a listed one. ok is false when nothing matched, and callers must
+// surface that rather than treating a zero rate as free.
 func (pt *PriceTable) Lookup(endpoint, model string) (Rate, bool) {
 	if r, ok := pt.Rates[PriceKey(endpoint, model)]; ok {
 		return r, true
 	}
 	if localRuntimes[strings.ToLower(endpoint)] {
 		return Rate{}, true
+	}
+	if r, ok := pt.resold(endpoint, model); ok {
+		return r, true
 	}
 	if r, ok := pt.Rates[PriceKey("", model)]; ok {
 		return r, true
@@ -146,6 +164,20 @@ func (pt *PriceTable) Lookup(endpoint, model string) (Rate, bool) {
 		return pt.Rates[PriceKey("", best)], true
 	}
 	return Rate{}, false
+}
+
+// resold prices a reseller's "maker/model" at the maker's own rate, for the
+// makers in resoldAtListPrice. A ":variant" (":free", ":batch", ":online") is
+// priced differently from the model, so it is left unpriced.
+func (pt *PriceTable) resold(endpoint, model string) (Rate, bool) {
+	maker, name, found := strings.Cut(strings.ToLower(model), "/")
+	if !found || strings.Contains(name, ":") || !resoldAtListPrice[strings.ToLower(endpoint)][maker] {
+		return Rate{}, false
+	}
+	if r, ok := pt.Lookup("", name); ok {
+		return r, true
+	}
+	return pt.Lookup("", versionDot.ReplaceAllString(name, "$1-$2"))
 }
 
 // datedVariant reports whether suffix is only a build stamp: a date (20260101,

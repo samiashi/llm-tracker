@@ -27,7 +27,8 @@ func TestOfficialRates(t *testing.T) {
 	}{
 		{"claude-opus-5", 5, 25, 0.50, 6.25, 10},
 		{"claude-sonnet-5", 2, 10, 0.20, 2.50, 4},
-		{"claude-sonnet-5-5", 2, 10, 0.20, 2.50, 4},
+		// Sonnet 5.5 has read cache at 0.05x since Anthropic's 2026-10-07 cut.
+		{"claude-sonnet-5-5", 2, 10, 0.10, 2.50, 4},
 		{"claude-haiku-4-5", 1, 5, 0.10, 1.25, 2},
 		// Fable 5.1 reads cache at 0.025x base rather than the usual 0.1x.
 		{"claude-fable-5-1", 10, 50, 0.25, 12.50, 20},
@@ -277,9 +278,9 @@ func TestLongContextTiersPriceTheWholeRequest(t *testing.T) {
 			Event{Source: SourceCodex, Model: "gpt-5.6-sol", Usage: past},
 			(12_001*8 + 260_000*0.8 + 10_000*30) / 1e6},
 		{"cache writes count toward the prompt",
-			Event{Source: SourceClaudeCode, Model: "claude-sonnet-4-5",
-				Usage: Usage{InputTokens: 1_000, CacheWrite5mTokens: 150_000, CacheWrite1hTokens: 49_001}},
-			(1_000*6 + 150_000*7.5 + 49_001*12) / 1e6},
+			Event{Source: SourceClaudeCode, Model: "claude-haiku-5-5",
+				Usage: Usage{InputTokens: 1_000, CacheWrite5mTokens: 50_000, CacheWrite1hTokens: 49_001}},
+			(1_000*0.5 + 50_000*0.625 + 49_001*1.0) / 1e6},
 		{"a Gemini session total is not one request",
 			Event{Source: SourceGemini, Model: "gpt-5.6-sol", Usage: past},
 			(12_001*4 + 260_000*0.4 + 10_000*20) / 1e6},
@@ -371,5 +372,53 @@ func TestALocalModelNamedLikeACloudOneIsStillFree(t *testing.T) {
 		if usd, priced := pt.Cost(e); !priced || usd != 0 {
 			t.Errorf("ollama|%s = $%.2f (priced=%v), want $0: it ran on the laptop", model, usd, priced)
 		}
+	}
+}
+
+// LiteLLM dropped its OpenRouter rows; a closed model resold there costs what
+// its maker charges, so it takes that price under OpenRouter's spelling.
+func TestOpenRouterPricesAClosedModelAtItsMakersRate(t *testing.T) {
+	pt := DefaultPriceTable()
+	for _, c := range []struct{ model, own string }{
+		{"anthropic/claude-opus-4.5", "claude-opus-4-5"},
+		{"anthropic/claude-sonnet-5.5", "claude-sonnet-5-5"},
+		{"Anthropic/Claude-Opus-5", "claude-opus-5"},
+		{"openai/gpt-5", "gpt-5"},
+		{"openai/gpt-6.1-sol", "gpt-6.1-sol"},
+		{"google/gemini-2.5-pro", "gemini-2.5-pro"},
+	} {
+		got, ok := pt.Lookup("openrouter", c.model)
+		own, ownOK := pt.Lookup("", c.own)
+		if !ownOK {
+			t.Fatalf("setup: %s is not priced", c.own)
+		}
+		if !ok || !reflect.DeepEqual(got, own) {
+			t.Errorf("openrouter|%s = %v/%v (ok=%v), want %s's %v/%v",
+				c.model, got.Input, got.Output, ok, c.own, own.Input, own.Output)
+		}
+	}
+}
+
+// An open-weight model on OpenRouter is served by whichever host it picks, at
+// as little as half its maker's rate, and a ":variant" has its own price:
+// neither has one right figure, so both are reported as unpriced.
+func TestOpenRouterLeavesWhatItCannotPriceUnpriced(t *testing.T) {
+	pt := DefaultPriceTable()
+	for _, model := range []string{
+		"z-ai/glm-5.2",
+		"deepseek/deepseek-v4-pro",
+		"moonshotai/kimi-k3",
+		"anthropic/claude-opus-5:batch",
+		"openai/gpt-5:free",
+		"~anthropic/claude-opus-latest",
+	} {
+		if r, ok := pt.Lookup("openrouter", model); ok {
+			t.Errorf("openrouter|%s priced at %v/%v, want unpriced", model, r.Input, r.Output)
+		}
+	}
+	// The fallback is OpenRouter's alone: another endpoint's "maker/model"
+	// is not read as a resold one.
+	if r, ok := pt.Lookup("requesty", "anthropic/claude-opus-4.5"); ok {
+		t.Errorf("requesty|anthropic/claude-opus-4.5 priced at %v/%v, want unpriced", r.Input, r.Output)
 	}
 }

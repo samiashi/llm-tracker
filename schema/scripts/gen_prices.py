@@ -28,7 +28,7 @@ PRICES = "schema/prices.json"
 # Providers a coding harness can plausibly report. Everything else is dropped.
 KEEP_PROVIDERS = {
     "anthropic", "openai", "text-completion-openai",
-    "deepseek", "moonshot", "zai", "openrouter", "xai", "mistral",
+    "deepseek", "moonshot", "zai", "xai", "mistral",
     "gemini", "vertex_ai-language-models", "groq", "together_ai", "fireworks_ai",
 }
 
@@ -169,8 +169,19 @@ def maker(model: str) -> str | None:
 MIN_KEYS_RATIO = 0.8
 
 
+# Endpoints upstream stopped pricing on purpose, so a table that held them is
+# not the baseline a regeneration is measured against. LiteLLM deleted every
+# OpenRouter row on 2026-10-09 (BerriAI/litellm#45665): OpenRouter reports each
+# response's real cost, which reaches us as Event.NativeCostUSD, and Lookup
+# prices the closed models it resells at their makers' rates.
+RETIRED_ENDPOINTS = {"openrouter"}
+
+
 def qualified(rates: dict) -> int:
-    return sum(1 for k in rates if not k.startswith("|"))
+    return sum(
+        1 for k in rates
+        if not k.startswith("|") and k.split("|", 1)[0] not in RETIRED_ENDPOINTS
+    )
 
 
 # Rates that must survive any regeneration, each with the upstream entry it
@@ -196,11 +207,14 @@ CANARIES = {
     }),
     # Not Anthropic, so a lost cache read would fall back to the input rate.
     "|gpt-5": ("gpt-5", {"input": 1.25, "output": 10.0, "cache_read": 0.125}),
-    "|claude-sonnet-4-5": ("claude-sonnet-4-5", {
-        "input": 3.0, "output": 15.0, "cache_read": 0.3,
-        "above_200k": {
-            "input": 6.0, "output": 22.5, "cache_read": 0.6,
-            "cache_write_5m": 7.5, "cache_write_1h": 12.0,
+    # The one Claude tier upstream still lists in full, 1h writes included.
+    # Sonnet 4.5's 200k tier went with Anthropic's 1M-context beta, which it
+    # retired (BerriAI/litellm#45647).
+    "|claude-haiku-5-5": ("claude-haiku-5-5", {
+        "input": 0.1, "output": 0.5, "cache_read": 0.01,
+        "above_100k": {
+            "input": 0.5, "output": 2.5, "cache_read": 0.05,
+            "cache_write_5m": 0.625, "cache_write_1h": 1.0,
         },
     }),
     "|gpt-5.6-sol": ("gpt-5.6-sol", {
