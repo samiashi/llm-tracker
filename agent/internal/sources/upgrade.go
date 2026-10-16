@@ -24,7 +24,8 @@ import "github.com/samiashi/llm-tracker/schema"
 //	10: opencode marks a subagent by its child session, not its agent's name;
 //	    Continue keys each record on the machine too, and names Google's API
 //	    "gemini", as pricing does.
-const CollectorVersion = 10
+//	11: Claude Code takes the account CLIProxyAPI served a request from.
+const CollectorVersion = 11
 
 // backfillOnUpgrade names, for each collector version, the sources whose
 // stored rows that version invalidates. Crossing it resets their cursors, so
@@ -53,6 +54,7 @@ var backfillOnUpgrade = map[int][]schema.Source{
 		schema.SourceOpenCode, // subagent flag corrected
 		schema.SourceContinue, // re-keyed on the machine; provider corrected
 	},
+	11: {schema.SourceClaudeCode}, // account of a proxied request corrected
 }
 
 // purgeOnUpgrade names the sources a version re-keys where no old row can be

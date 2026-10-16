@@ -185,6 +185,27 @@ context-window occupancy rather than billed usage, and an adapter reading them
 would produce confident wrong numbers — the one outcome this project treats as
 worse than a gap.
 
+## Accounts behind a proxy
+
+A transcript names no account, so an event takes whoever was signed in at its
+time (`Ctx.AccountRefAt`). A Claude Code request routed through CLIProxyAPI is
+served by whichever of the proxy's accounts it picks, so that inference is
+wrong for it. The proxy's usage monitor
+(`~/.cli-proxy-api/usage-monitor/usage.sqlite3`) records the account behind
+each request, and `sources/proxy.go` matches an event to its record on model
+and input, cache-read and cache-write counts, the record starting before the
+event ends. A match sets `AccountExact`. The proxy's accounts are named from
+its auth files, of which only `email` and `account_uuid` are read.
+
+- **Exact beats inferred, never the reverse.** On the server an exact account
+  replaces whatever is stored; an inferred one only fills in an empty one.
+- **Records arrive late.** The monitor takes them seconds after a request ends
+  and can lag an hour, so every pass re-checks the last `ProxyRecheck` of
+  stored events (`ReattributeProxied`) and requeues the ones it moves.
+- **Never read the proxy's usage queue.** It is destructive, and the monitor
+  is its one consumer. Its history starts when the monitor was installed;
+  earlier proxied requests keep the signed-in account.
+
 ## Charts
 
 - **Stack only for part-to-whole of one entity.** `MatrixBars` and

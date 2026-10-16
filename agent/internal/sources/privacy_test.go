@@ -31,7 +31,7 @@ var wireKeys = map[reflect.Type][]string{
 	reflect.TypeFor[schema.Batch](): {"v", "machine_id", "hostname", "agent_version",
 		"events", "unknown_sources", "unknown_complete", "accounts"},
 	reflect.TypeFor[schema.Event](): {"v", "id", "native_id", "source", "surface", "ts",
-		"machine_id", "account_ref", "provider", "model", "endpoint", "usage",
+		"machine_id", "account_ref", "account_exact", "provider", "model", "endpoint", "usage",
 		"inference_geo", "speed", "effort", "cost_basis", "native_cost_usd",
 		"session_id", "is_subagent", "agent_version",
 		// The collector version that read the event: an integer.

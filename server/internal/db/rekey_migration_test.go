@@ -254,7 +254,7 @@ func TestContinueOldKeysRetireOnlyWhereTheirReplacementIsPresent(t *testing.T) {
 	})
 	t.Run("both stored before the migration", func(t *testing.T) {
 		d := newDB(t)
-		withoutMigrationsAfter(t, d, 22, func() { ingest(t, d, append(old, current...)...) })
+		withoutMigrationsAfter(t, d, 22, func() { storeRaw(t, d, append(old, current...)...) })
 		if got := nativeIDs(t, d, schema.SourceContinue, "m"); !slices.Equal(got, want) {
 			t.Fatalf("holds %v, want %v", got, want)
 		}

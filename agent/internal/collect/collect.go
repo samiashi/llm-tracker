@@ -249,9 +249,15 @@ func Run(ctx context.Context, st *store.Store, home string, log *slog.Logger) (*
 		return nil, err
 	}
 
+	proxy, err := sources.OpenProxyLedger(home)
+	if err != nil {
+		log.Warn("open the proxy's usage monitor; proxied requests keep the signed-in account", "err", err)
+	}
+	defer proxy.Close()
+
 	c := &sources.Ctx{
 		Store: st, MachineID: machineID, Home: home,
-		Accounts: accounts, AccountHistory: history,
+		Accounts: accounts, AccountHistory: history, Proxy: proxy,
 	}
 	sum := &Summary{StartedAt: time.Now(), PerSource: map[schema.Source]SourceSummary{}}
 
@@ -291,6 +297,12 @@ func Run(ctx context.Context, st *store.Store, home string, log *slog.Logger) (*
 
 	if ctx.Err() == nil {
 		dedupeSuperseded(ctx, st, sum, log)
+		if _, err := sources.ReattributeProxied(ctx, c, time.Now().Add(-sources.ProxyRecheck)); err != nil {
+			log.Warn("attribute proxied requests stored before their record", "err", err)
+		}
+	}
+	if err := proxy.Err(); err != nil {
+		log.Warn("read the proxy's usage monitor; unread requests keep the signed-in account", "err", err)
 	}
 
 	if err := st.ClearUnknown(ctx); err != nil {

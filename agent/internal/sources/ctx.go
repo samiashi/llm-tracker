@@ -28,6 +28,9 @@ type Ctx struct {
 	// AccountHistory is every observed switch, sign-outs included, oldest
 	// first, so an event can be attributed by its own timestamp.
 	AccountHistory []store.AccountWindow
+	// Proxy names the account behind requests CLIProxyAPI routed, which
+	// beats any inference from who was signed in. Nil without the proxy.
+	Proxy *ProxyLedger
 
 	events []schema.Event
 	// unparsed counts lines an adapter read and could not decode, folded

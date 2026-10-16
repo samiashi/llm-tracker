@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS event (
   sent         INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_event_unsent ON event(sent, ts);
+-- For re-reading recent rows (SourceRowsSince).
+CREATE INDEX IF NOT EXISTS idx_event_ts ON event(ts);
 
 -- An older store's plan-quota readings: nothing reads or sends them.
 DROP TABLE IF EXISTS quota;

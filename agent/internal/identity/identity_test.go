@@ -178,3 +178,21 @@ func TestCodexAccountsInOneWorkspaceStayApart(t *testing.T) {
 		t.Fatalf("with no user id in the token: %q, want the account id alone", got)
 	}
 }
+
+// CLIProxyAPI's auth files hold each account's tokens beside its uuid and
+// email; only Claude accounts are read, and only those two fields.
+func TestTheProxysClaudeAccountsAreNamedByTheirUUID(t *testing.T) {
+	dir := home(t, map[string]string{
+		ProxyAuthDir + "/claude-a.json": `{"type":"claude","email":"a@example.com",` +
+			`"account_uuid":"0a1b2c3d-0000-4000-8000-00000000000a","access_token":"secret"}`,
+		ProxyAuthDir + "/codex-b.json":  `{"type":"codex","email":"b@example.com","account_uuid":"b"}`,
+		ProxyAuthDir + "/claude-c.json": `{"type":"claude","email":"c@example.com"}`,
+		ProxyAuthDir + "/broken.json":   `{"type":"cla`,
+	})
+	got := ProxyAccounts(dir)
+	if len(got) != 1 || *got[0] != (schema.Account{
+		Ref: "anthropic:0a1b2c3d-0000-4000-8000-00000000000a", Provider: "anthropic", Email: "a@example.com",
+	}) {
+		t.Fatalf("ProxyAccounts = %+v, want the one Claude account with a uuid", got)
+	}
+}

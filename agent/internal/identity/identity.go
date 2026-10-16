@@ -100,13 +100,62 @@ func Logins() []Login {
 	return out
 }
 
-// All returns the accounts signed in now, Anthropic first.
+// All returns the accounts signed in now, Anthropic first, then any other
+// account CLIProxyAPI serves requests from. The proxy's come last because the
+// first account is the machine's own (schema.Batch.Accounts).
 func All() []*schema.Account {
 	var out []*schema.Account
+	seen := map[string]bool{}
 	for _, l := range Logins() {
 		if l.Account != nil {
 			out = append(out, l.Account)
+			seen[l.Account.Ref] = true
 		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return out
+	}
+	for _, a := range ProxyAccounts(home) {
+		if !seen[a.Ref] {
+			out = append(out, a)
+			seen[a.Ref] = true
+		}
+	}
+	return out
+}
+
+// ProxyAuthDir is where CLIProxyAPI keeps one file per account it serves
+// requests from, relative to home.
+const ProxyAuthDir = ".cli-proxy-api/auth"
+
+// ProxyAccounts returns the Claude accounts CLIProxyAPI holds, disabled ones
+// included: their past requests still need a name.
+//
+// Each file holds the account's OAuth tokens beside its uuid and email. Only
+// the uuid and email are decoded, and nothing else from the file leaves this
+// function. A file that cannot be read or parsed is skipped.
+func ProxyAccounts(home string) []*schema.Account {
+	files, _ := filepath.Glob(filepath.Join(home, ProxyAuthDir, "*.json"))
+	var out []*schema.Account
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var doc struct {
+			Type        string `json:"type"`
+			Email       string `json:"email"`
+			AccountUUID string `json:"account_uuid"`
+		}
+		if json.Unmarshal(b, &doc) != nil || doc.Type != "claude" || doc.AccountUUID == "" {
+			continue
+		}
+		out = append(out, &schema.Account{
+			Ref:      "anthropic:" + doc.AccountUUID,
+			Provider: "anthropic",
+			Email:    doc.Email,
+		})
 	}
 	return out
 }

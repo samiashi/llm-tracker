@@ -75,6 +75,68 @@ func putAllTx(ctx context.Context, tx *sql.Tx, items []Record) (int, error) {
 	return n, nil
 }
 
+// SourceRowsSince returns one source's rows from since on, oldest first, each
+// payload a json.RawMessage.
+func (s *Store) SourceRowsSince(ctx context.Context, source string, since time.Time) ([]Record, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, ts, total_tokens, collector, payload FROM event
+		WHERE ts >= ? AND json_extract(payload, '$.source') = ?
+		ORDER BY ts`, since.Unix(), source)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Record
+	for rows.Next() {
+		var r Record
+		var ts int64
+		var p string
+		if err := rows.Scan(&r.ID, &ts, &r.TotalTokens, &r.Collector, &p); err != nil {
+			return nil, err
+		}
+		r.TS, r.Payload = time.Unix(ts, 0), json.RawMessage(p)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// RewritePayloads replaces the payloads of rows read by SourceRowsSince and
+// requeues them, for a correction that changes no count, and returns how many
+// it wrote. A row changed since it was read is left alone: its new reading is
+// the better one (putAllTx), and is offered for correction on the next pass.
+func (s *Store) RewritePayloads(ctx context.Context, items []Record) (int, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE event SET payload = ?, sent = 0
+		WHERE id = ? AND total_tokens = ? AND collector = ?`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+	n := 0
+	for _, it := range items {
+		b, err := json.Marshal(it.Payload)
+		if err != nil {
+			return n, err
+		}
+		res, err := stmt.ExecContext(ctx, string(b), it.ID, it.TotalTokens, it.Collector)
+		if err != nil {
+			return n, err
+		}
+		if ra, _ := res.RowsAffected(); ra > 0 {
+			n++
+		}
+	}
+	return n, tx.Commit()
+}
+
 // Unsent returns up to limit events awaiting upload, oldest first.
 func (s *Store) Unsent(ctx context.Context, limit int) (ids []string, payloads []json.RawMessage, err error) {
 	rows, err := s.db.QueryContext(ctx,

@@ -98,6 +98,11 @@ type Event struct {
 	// exactly one account_id and switching overwrites it, so the association
 	// cannot be reconstructed later.
 	AccountRef string `json:"account_ref,omitempty"`
+	// AccountExact marks an AccountRef read from a record of which account
+	// served the request -- CLIProxyAPI's, for a request it routed -- rather
+	// than inferred from who was signed in. The server lets an exact account
+	// replace an inferred one, and never the reverse.
+	AccountExact bool `json:"account_exact,omitempty"`
 
 	Provider string `json:"provider"`
 	Model    string `json:"model"`

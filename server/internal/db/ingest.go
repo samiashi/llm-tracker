@@ -31,6 +31,10 @@ const newerReading = `(excluded.collector > event.collector
 const nativeCost = `(excluded.cost_source = 'native'
 		AND excluded.total_tokens >= event.total_tokens)`
 
+// exactAccount is true when the incoming reading names the account that served
+// the request (schema.Event.AccountExact).
+const exactAccount = `(excluded.account_exact = 1 AND excluded.account_ref != '')`
+
 // upsertEvent stores one reading of a response, merging it into any earlier
 // reading of the same one. Each column moves only on the condition that makes
 // the incoming value better information, and every SET needs an arm in the
@@ -46,8 +50,8 @@ const upsertEvent = `
 		cache_write_1h, reasoning_tokens, web_search_calls, web_fetch_calls,
 		total_tokens, cost_basis, cost_usd, cost_source,
 		session_id, is_subagent, received_at,
-		speed, effort, inference_geo, agent_version, collector
-	) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+		speed, effort, inference_geo, agent_version, collector, account_exact
+	) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
 	  WHERE NOT EXISTS (SELECT 1 FROM pruned_event WHERE id = ?)
 	ON CONFLICT(id) DO UPDATE SET
 		-- A stored total never falls, and the split is always one reading's.
@@ -82,10 +86,14 @@ const upsertEvent = `
 		inference_geo = CASE WHEN ` + newerReading + ` OR event.inference_geo = '' THEN excluded.inference_geo ELSE event.inference_geo END,
 		agent_version = CASE WHEN ` + newerReading + ` OR event.agent_version = '' THEN excluded.agent_version ELSE event.agent_version END,
 
-		-- Stamped from whoever is signed in when a file is read, so only ever
-		-- filled in: a re-read after a login switch must not move history. A
-		-- known basis is never replaced by 'unknown', which is the absence of one.
-		account_ref = CASE WHEN event.account_ref = '' THEN excluded.account_ref ELSE event.account_ref END,
+		-- An inferred account is stamped from whoever is signed in when a file
+		-- is read, so it only ever fills in: a re-read after a login switch
+		-- must not move history. An exact one names the account that served
+		-- the request, and replaces whatever is stored. A known basis is never
+		-- replaced by 'unknown', which is the absence of one.
+		account_ref   = CASE WHEN ` + exactAccount + ` OR event.account_ref = ''
+		                     THEN excluded.account_ref ELSE event.account_ref END,
+		account_exact = CASE WHEN ` + exactAccount + ` THEN 1 ELSE event.account_exact END,
 		cost_basis  = CASE WHEN excluded.cost_basis IN ` + knownBasis + `
 		                    AND (` + newerReading + ` OR event.cost_basis NOT IN ` + knownBasis + `)
 		                   THEN excluded.cost_basis ELSE event.cost_basis END,
@@ -116,6 +124,7 @@ const upsertEvent = `
 	   OR (excluded.inference_geo != '' AND event.inference_geo = '')
 	   OR (excluded.agent_version != '' AND event.agent_version = '')
 	   OR (excluded.account_ref   != '' AND event.account_ref   = '')
+	   OR (` + exactAccount + ` AND (event.account_exact = 0 OR excluded.account_ref != event.account_ref))
 	   OR (excluded.cost_basis IN ` + knownBasis + ` AND event.cost_basis NOT IN ` + knownBasis + `))`
 
 // ErrNoMachine is a batch carrying events or unknown sources but no machine to
@@ -295,6 +304,9 @@ func (d *DB) storeEventsTx(ctx context.Context, tx *sql.Tx, login string, b *sch
 		if err != nil {
 			return nil, err
 		}
+		// Credited to the machine's account instead, the event no longer
+		// carries the account that served it.
+		exact := e.AccountExact && ref == e.AccountRef
 		cost, source := d.priceEvent(e)
 		if source == costUnpriced {
 			res.Unpriced++
@@ -307,7 +319,7 @@ func (d *DB) storeEventsTx(ctx context.Context, tx *sql.Tx, login string, b *sch
 			u.CacheWrite1hTokens, u.ReasoningTokens, u.WebSearchCalls, u.WebFetchCalls,
 			u.TotalTokens(), string(e.CostBasis), cost, source,
 			e.SessionID, boolInt(e.IsSubagent), now,
-			e.Speed, e.Effort, e.InferenceGeo, e.AgentVersion, e.Collector, e.ID)
+			e.Speed, e.Effort, e.InferenceGeo, e.AgentVersion, e.Collector, boolInt(exact), e.ID)
 		if err != nil {
 			return nil, err
 		}

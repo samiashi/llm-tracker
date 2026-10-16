@@ -245,6 +245,7 @@ func (a ClaudeCode) Collect(ctx context.Context, c *Ctx) (Result, error) {
 		}
 		if ev, ok := l.toEvent(schema.SourceClaudeCode, c, acct); ok {
 			ev.AgentVersion = l.Version
+			c.attributeProxied(ctx, &ev)
 			c.emit(ev)
 			for _, a := range l.abandonedAttempts(ev) {
 				c.emit(a)
