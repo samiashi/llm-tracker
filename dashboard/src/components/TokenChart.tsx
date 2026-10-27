@@ -67,6 +67,7 @@ export function TokenChart({
 
   return (
     <OverlaidAreas
+      hourly={hourly}
       data={data}
       lines={series}
       height={height}

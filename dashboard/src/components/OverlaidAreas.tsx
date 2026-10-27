@@ -27,6 +27,7 @@ export function OverlaidAreas({
   label,
   height,
   showTotal = true,
+  hourly = false,
 }: {
   /** One row per day, keyed `day` for the axis and by each line's key. */
   data: Record<string, string | number>[];
@@ -36,6 +37,8 @@ export function OverlaidAreas({
   height: number;
   /** False where the chart draws a selection; see ChartTooltip. */
   showTotal?: boolean;
+  /** Short clock ticks; full date/offset labels remain distinct and appear on hover. */
+  hourly?: boolean;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   return (
@@ -52,6 +55,7 @@ export function OverlaidAreas({
           <CartesianGrid stroke="var(--grid)" vertical={false} />
           <XAxis
             dataKey="day"
+            tickFormatter={hourly ? (value: string) => value.split(" ")[1] ?? value : undefined}
             tick={{ fill: "var(--text-muted)", fontSize: 11 }}
             stroke="var(--axis)"
             tickLine={false}

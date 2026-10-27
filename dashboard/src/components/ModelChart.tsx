@@ -54,6 +54,7 @@ export function ModelChart({
 
   return (
     <OverlaidAreas
+      hourly={hourly}
       data={data}
       lines={models.map((m, i) => ({ key: m, name: m, color: MODEL_SLOTS[i] }))}
       height={height}
