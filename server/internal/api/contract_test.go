@@ -30,17 +30,18 @@ const fixtureDir = "../../../dashboard/tests/fixtures/api"
 
 // dashboardEndpoints is every request api.ts makes, with its parameters.
 var dashboardEndpoints = map[string]string{
-	"summary":     "/v1/summary?from=2026-06-01&to=2026-06-30",
-	"daily":       "/v1/daily?from=2026-06-01&to=2026-06-30",
-	"daily-model": "/v1/daily/model?from=2026-06-01&to=2026-06-30&top=6",
-	"breakdown":   "/v1/breakdown?by=model&from=2026-06-01&to=2026-06-30",
-	"heatmap":     "/v1/heatmap?from=2026-06-01&to=2026-06-30",
-	"sessions":    "/v1/sessions/top?from=2026-06-01&to=2026-06-30&limit=50",
-	"health":      "/v1/health/sources",
-	"agents":      "/v1/agents",
-	"unknown":     "/v1/unknown",
-	"compare":     "/v1/compare?from=2026-06-01&to=2026-06-30",
-	"matrix":      "/v1/matrix?rows=model&cols=effort&from=2026-06-01&to=2026-06-30&limit=12",
+	"summary":        "/v1/summary?from=2026-06-01&to=2026-06-30",
+	"daily":          "/v1/daily?from=2026-06-01&to=2026-06-30",
+	"daily-model":    "/v1/daily/model?from=2026-06-01&to=2026-06-30&top=6",
+	"breakdown":      "/v1/breakdown?by=model&from=2026-06-01&to=2026-06-30",
+	"heatmap":        "/v1/heatmap?from=2026-06-01&to=2026-06-30",
+	"heatmap-viewer": "/v1/heatmap?from=2026-06-01&to=2026-06-30&timezone=Asia/Dubai",
+	"sessions":       "/v1/sessions/top?from=2026-06-01&to=2026-06-30&limit=50",
+	"health":         "/v1/health/sources",
+	"agents":         "/v1/agents",
+	"unknown":        "/v1/unknown",
+	"compare":        "/v1/compare?from=2026-06-01&to=2026-06-30",
+	"matrix":         "/v1/matrix?rows=model&cols=effort&from=2026-06-01&to=2026-06-30&limit=12",
 }
 
 // clockKeys come from the server's clock; pinned when a fixture is written so

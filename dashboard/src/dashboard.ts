@@ -1,3 +1,4 @@
+import { localTimestamp } from "@/timezone";
 import { api } from "@/api";
 import type { Version } from "@/fleet";
 import type {
@@ -28,10 +29,13 @@ export function change(
   previous: number,
   compare: Compare,
   firstDay: string,
+  timezone = "UTC",
 ): Change | null {
   // No window means the comparison failed to load; "flat" would be a claim.
   if (!compare.previous_from) return null;
-  const window = `${compare.previous_from} → ${compare.previous_to}`;
+  const label = (value: string) =>
+    value.includes("T") ? localTimestamp(value, timezone, true) : `${value} (UTC day)`;
+  const window = `${label(compare.previous_from)} → ${label(compare.previous_to)}`;
   if (firstDay && compare.previous_from < firstDay) {
     const note =
       compare.previous_to < firstDay
@@ -94,6 +98,7 @@ export type Data = {
   detailFrom: string;
   /** The heatmap's zone, in minutes east of UTC. */
   heatOffset: number;
+  heatZone?: string;
   sessions: SessionRow[];
   health: SourceHealth[];
   unknown: UnknownRow[];
@@ -166,6 +171,7 @@ export async function loadDashboard(filter: Filter, signal: AbortSignal): Promis
     heat: heat.cells,
     detailFrom: heat.detail_from ?? "",
     heatOffset: heat.utc_offset_minutes,
+    heatZone: heat.timezone,
     sessions: valueOr(r.sessions, { sessions: [] }).sessions,
     health: valueOr(r.health, { sources: [] }).sources,
     unknown: valueOr(r.unknown, { unknown: [] }).unknown,

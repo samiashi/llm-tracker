@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A probe that reads back one page of the store undercounts any real history.
@@ -66,5 +67,36 @@ func TestASourceCommandNamesTheRegisteredSources(t *testing.T) {
 			t.Errorf("%s: %v; want it to say %q and list the registered sources",
 				strings.Join(tc.args, " "), err, tc.says)
 		}
+	}
+}
+
+func TestProbeTimestampKeepsTheInstantAndUsesLocalOffset(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".claude", "projects", "example")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := `{"type":"assistant","requestId":"r","sessionId":"s","timestamp":"2026-09-20T10:00:00+05:30","message":{"id":"m","model":"claude-sonnet-4-5","usage":{"input_tokens":10}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "session.jsonl"), []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := agentRun(t, "probe", "claude_code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, stamp, ok := strings.Cut(out, " ts=")
+	if !ok {
+		t.Fatalf("no sample timestamp: %s", out)
+	}
+	got, err := time.Parse(time.RFC3339, strings.TrimSpace(stamp))
+	want := time.Date(2026, 9, 20, 4, 30, 0, 0, time.UTC)
+	if err != nil || !got.Equal(want) {
+		t.Fatalf("probe shifted instant: %s (%v)", stamp, err)
+	}
+	_, gotOffset := got.Zone()
+	_, wantOffset := want.In(time.Local).Zone()
+	if gotOffset != wantOffset {
+		t.Fatalf("offset %d, want local %d", gotOffset, wantOffset)
 	}
 }

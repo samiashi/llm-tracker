@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/samiashi/llm-tracker/agent/internal/sources"
 	"github.com/samiashi/llm-tracker/agent/internal/store"
@@ -138,6 +139,6 @@ func cmdProbe(home, name string) error {
 	e := *sample
 	fmt.Printf("\nsample event: model=%s provider=%s effort=%q in=%d out=%d cache_read=%d ts=%s\n",
 		e.Model, e.Provider, e.Effort, e.Usage.InputTokens, e.Usage.OutputTokens,
-		e.Usage.CacheReadTokens, e.TS.Format("2006-01-02T15:04:05Z"))
+		e.Usage.CacheReadTokens, e.TS.Local().Format(time.RFC3339))
 	return nil
 }

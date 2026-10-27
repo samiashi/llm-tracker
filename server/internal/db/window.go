@@ -13,6 +13,8 @@ type Window struct {
 	// Start and End select a half-open timestamp range [Start, End). Only the
 	// rolling 24h view uses this exception to the day-rollup rule.
 	Start, End int64
+	// Zone controls hourly display buckets only; day windows and storage stay UTC.
+	Zone *time.Location
 }
 
 // Normalise fills in the default window, the last 30 UTC days. A caller that
@@ -89,11 +91,11 @@ func (w Window) relation() string {
 	return "event_daily"
 }
 
-// bucket uses UTC clock hours only for exact timestamp windows. The first
+// bucket returns UTC instant keys for viewer-local hours in timestamp windows. The first
 // and last bucket may be partial; where still clips events to the exact bounds.
 func (w Window) bucket() string {
 	if w.End > 0 {
-		return "strftime('%Y-%m-%dT%H:00:00Z', ts, 'unixepoch')"
+		return "strftime('%Y-%m-%dT%H:%M:%SZ', " + w.hourSQL(w.Zone, true) + ", 'unixepoch')"
 	}
 	return "day"
 }

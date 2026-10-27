@@ -210,10 +210,12 @@ describe("App", () => {
     await loaded();
     const offset = -new Date().getTimezoneOffset();
     const chip = document.querySelector(".tz")!;
-    if (offset === 0) expect(chip.textContent).toBe("UTC");
+    if (offset === 0) expect(chip.textContent).toBe("UTC days");
     else {
       const start = utcMidnightAt(offset);
-      expect(chip.textContent).toContain(`days run ${start}–${start} your time`);
+      expect(chip.textContent).toContain(
+        `days run ${start}–${start} in ${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
+      );
     }
   });
 
@@ -316,7 +318,7 @@ describe("the dashboard counts UTC days, as the server does", () => {
     const summary = fetch.mock.calls.map(([u]) => urlOf(u)).find((u) => u.includes("summary"));
     expect(summary).toContain("from=2026-09-17&to=2026-09-23");
     expect(screen.getByLabelText("To date").getAttribute("max")).toBe("2026-09-23");
-    expect(screen.getByText("UTC")).toBeTruthy();
+    expect(screen.getByText("UTC days")).toBeTruthy();
   });
 });
 
@@ -763,6 +765,7 @@ describe("rolling 24h preset", () => {
     const end = Math.floor(Date.now() / 1000);
     for (const p of params()) {
       expect(Number(p.get("end"))).toBe(end);
+      expect(p.get("timezone")).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
       expect(Number(p.get("start"))).toBe(end - 86400);
     }
     expect(screen.getByRole("button", { name: "24h" }).getAttribute("aria-pressed")).toBe("true");

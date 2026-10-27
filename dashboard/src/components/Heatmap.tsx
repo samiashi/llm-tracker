@@ -134,6 +134,7 @@ export function Heatmap({
   detailFrom,
   serverOffset,
   localOffset,
+  timezone,
 }: {
   cells: HeatCell[];
   range?: DayRange;
@@ -143,6 +144,7 @@ export function Heatmap({
   serverOffset: number;
   /** The viewer's own offset, to say whether those hours are theirs. */
   localOffset?: number;
+  timezone?: string;
 }) {
   const [hover, setHover] = useState<Hover | null>(null);
   const [tab, setTab] = useState<{ day: string; hour: number } | null>(null);
@@ -331,10 +333,12 @@ export function Heatmap({
     <>
       <p className="heathint" id={hintId}>
         {[
-          `${zoneOf(serverOffset, localOffset)}; the other cards count UTC days, so the first and last rows can be partial.`,
-          model.behind &&
+          `${timezone ? `Hours use your timezone (${timezone})` : zoneOf(serverOffset, localOffset)}; daily totals use UTC days. Edge rows may be partial. Repeated daylight-saving hours are combined.`,
+          !timezone &&
+            model.behind &&
             "The server is behind UTC, so the bottom row is the evening before the range starts.",
-          model.ahead &&
+          !timezone &&
+            model.ahead &&
             "The server is ahead of UTC, so the top row is the morning after the range ends.",
           "Hover or focus a cell for details; arrow keys move between cells.",
         ]
@@ -419,7 +423,7 @@ export function Heatmap({
               )}
               {hoveredRow.outside && (
                 <div className="t-row t-idle">
-                  <span>Outside the selected dates, in server time</span>
+                  <span>Outside the selected UTC dates, in the displayed timezone</span>
                 </div>
               )}
             </div>

@@ -81,7 +81,11 @@ func window(r *http.Request) db.Window {
 	q := r.URL.Query()
 	start, _ := strconv.ParseInt(q.Get("start"), 10, 64)
 	end, _ := strconv.ParseInt(q.Get("end"), 10, 64)
-	return db.Window{From: q.Get("from"), To: q.Get("to"), Person: q.Get("person"), Start: start, End: end}
+	var zone *time.Location
+	if name := q.Get("timezone"); name != "" {
+		zone, _ = time.LoadLocation(name)
+	}
+	return db.Window{From: q.Get("from"), To: q.Get("to"), Person: q.Get("person"), Start: start, End: end, Zone: zone}
 }
 
 // windowed refuses a range that is not two real days in order. The queries
@@ -89,8 +93,18 @@ func window(r *http.Request) db.Window {
 // and 2026-04-31 fails only where a handler parses it, as a 500.
 func (s *Server) windowed(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		win := window(r).Normalise()
 		q := r.URL.Query()
+		if name := q.Get("timezone"); name != "" {
+			if len(name) > 128 || name == "Local" {
+				writeErr(w, http.StatusBadRequest, errors.New("timezone must be an IANA timezone name"))
+				return
+			}
+			if _, err := time.LoadLocation(name); err != nil {
+				writeErr(w, http.StatusBadRequest, errors.New("unknown timezone"))
+				return
+			}
+		}
+		win := window(r).Normalise()
 		if q.Has("start") || q.Has("end") {
 			start, se := strconv.ParseInt(q.Get("start"), 10, 64)
 			end, ee := strconv.ParseInt(q.Get("end"), 10, 64)
@@ -118,6 +132,8 @@ func (s *Server) windowed(h http.HandlerFunc) http.HandlerFunc {
 		switch {
 		case ferr != nil || terr != nil:
 			writeErr(w, http.StatusBadRequest, errors.New("from and to must be real dates, as YYYY-MM-DD"))
+		case q.Get("timezone") != "" && to.Sub(from).Hours()/24 >= 3650:
+			writeErr(w, http.StatusBadRequest, errors.New("timezone-aware ranges are limited to 3650 days"))
 		case from.After(to):
 			writeErr(w, http.StatusBadRequest, fmt.Errorf("from %s is after to %s", win.From, win.To))
 		default:
@@ -275,8 +291,9 @@ func (s *Server) handleHeatmap(w http.ResponseWriter, r *http.Request) {
 		// which the dashboard names beside the grid. A container left on UTC
 		// shows its hours shifted by the team's whole offset, and this makes
 		// that visible.
-		UTCOffsetMinutes int `json:"utc_offset_minutes"`
-	}{cells, from, offset})
+		UTCOffsetMinutes int    `json:"utc_offset_minutes"`
+		TimeZone         string `json:"timezone,omitempty"`
+	}{cells, from, offset, r.URL.Query().Get("timezone")})
 }
 
 func (s *Server) handleTopSessions(w http.ResponseWriter, r *http.Request) {

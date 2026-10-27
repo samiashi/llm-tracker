@@ -41,11 +41,11 @@ export function ModelChart({
   const withYear = spansYears(range?.from, range?.to);
   const hourly = range?.start !== undefined && range?.end !== undefined;
   const buckets = hourly
-    ? calendarHours(range.start!, range.end!)
+    ? calendarHours(range.start!, range.end!, range.timezone)
     : calendarDays(range?.from || days[0], range?.to || days[days.length - 1]);
   const data = buckets.map((day) => {
     const row: Record<string, number | string> = {
-      day: hourly ? hourLabel(day) : shortDay(day, withYear),
+      day: hourly ? hourLabel(day, range?.timezone) : shortDay(day, withYear),
     };
     const present = byDay.get(day);
     for (const m of models) row[m] = present?.[m] ?? 0;
@@ -58,7 +58,7 @@ export function ModelChart({
       lines={models.map((m, i) => ({ key: m, name: m, color: MODEL_SLOTS[i] }))}
       height={height}
       showTotal={false}
-      label={`Tokens per ${hourly ? "hour (UTC)" : "day"} for the busiest models, ${data.length} ${hourly ? "hourly buckets" : "days"}`}
+      label={`Tokens per ${hourly ? `hour (${range?.timezone || "UTC"})` : "day"} for the busiest models, ${data.length} ${hourly ? "hourly buckets" : "days"}`}
     />
   );
 }

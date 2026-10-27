@@ -1,3 +1,4 @@
+import { browserTimeZone } from "@/timezone";
 import { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { api, describeFailure, MATRIX_ROWS } from "@/api";
 import type { Filter, Group } from "@/api";
@@ -57,6 +58,7 @@ export default function App() {
   // The viewer's offset, for saying where a UTC day starts on their clock.
   const localOffset = -new Date(clock).getTimezoneOffset();
   const dayStart = utcMidnightAt(localOffset);
+  const timezone = browserTimeZone();
 
   useEffect(() => {
     writeIntentToURL(intent);
@@ -71,15 +73,15 @@ export default function App() {
   // Resolve once per fetch so every panel shares exact bounds, including
   // manual refresh and resuming a tab that was hidden across midnight.
   const load = useCallback(
-    (signal: AbortSignal) => loadDashboard(resolve(intent, Date.now()), signal),
-    [intent],
+    (signal: AbortSignal) => loadDashboard({ ...resolve(intent, Date.now()), timezone }, signal),
+    [intent, timezone],
   );
 
   const live = useLiveData<Data>(
     load,
     intent.preset === "24h"
-      ? `24h|${filter.person ?? ""}`
-      : `${filter.from}|${filter.to}|${filter.person ?? ""}`,
+      ? `24h|${filter.person ?? ""}|${timezone}`
+      : `${filter.from}|${filter.to}|${filter.person ?? ""}|${timezone}`,
   );
   const { data, loading, refreshing, updatedAt } = live;
   const loadFailed = live.error !== null;
@@ -131,7 +133,11 @@ export default function App() {
             <span className="cadence">auto {POLL_MS / 1000}s · agents 5m</span>
           </span>
           {/* An action on the range, not an input to it, so it sits with refresh. */}
-          <a className="export" href={api.exportURL(resolve(intent, clock))} download>
+          <a
+            className="export"
+            href={api.exportURL({ ...resolve(intent, clock), timezone })}
+            download
+          >
             export CSV
           </a>
         </span>
@@ -177,15 +183,15 @@ export default function App() {
           id={tzId}
           title={
             intent.preset === "24h"
-              ? "Counts events in the last 24 hours, refreshed each minute. Charts show UTC hours; the first and last hours may be partial."
+              ? `Counts events in the last 24 hours, refreshed each minute. Charts show hours in ${timezone}; the first and last hours may be partial.`
               : `Every card but the hourly grid counts UTC days, as the server stores them${localOffset ? `: in your time zone (${utcOffset(localOffset)}) each runs ${dayStart}–${dayStart}` : ""}.`
           }
         >
-          <span className="tz-pill">UTC</span>
-          {intent.preset === "24h" && <span>rolling last 24 hours · hourly charts (UTC)</span>}
+          <span className="tz-pill">{intent.preset === "24h" ? timezone : "UTC days"}</span>
+          {intent.preset === "24h" && <span>rolling last 24 hours · local hourly charts</span>}
           {intent.preset !== "24h" && localOffset !== 0 && (
             <span className="tz-local">
-              days run {dayStart}–{dayStart} your time
+              days run {dayStart}–{dayStart} in {timezone}
             </span>
           )}
         </span>
@@ -253,7 +259,8 @@ const Dashboard = memo(function Dashboard({
   const t = summary.totals;
   const prev = compare.previous;
   const firstDay = summary.history_first_day;
-  const delta = (current: number, previous: number) => change(current, previous, compare, firstDay);
+  const delta = (current: number, previous: number) =>
+    change(current, previous, compare, firstDay, data.range.timezone);
 
   // Every prompt token: input arrives with cache reads and writes already
   // taken out, and a cache write is prompt that missed the cache.
@@ -276,7 +283,8 @@ const Dashboard = memo(function Dashboard({
     to: data.range.to,
   };
 
-  const interval = data.range.start !== undefined ? "hour (UTC)" : "day";
+  const interval =
+    data.range.start !== undefined ? `hour (${data.range.timezone || "UTC"})` : "UTC day";
 
   const rated = data.models
     .filter((g) => g.totals.billed_usd > 0)
@@ -506,6 +514,7 @@ const Dashboard = memo(function Dashboard({
                 range={range}
                 detailFrom={data.detailFrom}
                 serverOffset={data.heatOffset}
+                timezone={data.heatZone}
                 localOffset={localOffset}
               />
             </div>

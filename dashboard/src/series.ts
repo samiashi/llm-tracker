@@ -1,3 +1,5 @@
+import { localTimestamp, offsetSeconds } from "@/timezone";
+
 /**
  * Calendar helpers for time series.
  *
@@ -55,20 +57,35 @@ export function fillDays<T>(
 }
 
 /** The window the page is showing; charts gap-fill to it (see `fillDays`). */
-export type DayRange = { from: string; to: string; start?: number; end?: number };
+export type DayRange = {
+  from: string;
+  to: string;
+  start?: number;
+  end?: number;
+  timezone?: string;
+};
 
-/** UTC clock hours intersecting [start, end), including partial edge hours.
- * Step by elapsed seconds so midnight and DST never skip or repeat a bucket.
+/** Local clock-hour buckets intersecting the exact 24h window.
+ * Sample minute boundaries to catch half-hour DST jumps as well as full hours.
+ * Keys stay UTC instants, so a repeated clock hour never overwrites another.
  */
-export function calendarHours(start: number, end: number): string[] {
-  const out: string[] = [];
-  for (let hour = Math.floor(start / 3600) * 3600; hour < end; hour += 3600) {
-    out.push(new Date(hour * 1000).toISOString().replace(".000Z", "Z"));
+export function calendarHours(start: number, end: number, zone = "UTC"): string[] {
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > 86400)
+    return [];
+  const keys = new Set<number>();
+  for (let at = start; at < end; at = Math.floor(at / 60) * 60 + 60) {
+    const offset = offsetSeconds(at * 1000, zone);
+    let bucket = Math.floor((at + offset) / 3600) * 3600 - offset;
+    // An offset change can start partway through a local hour (Lord Howe).
+    // The partial bucket starts at the transition, not at a nonexistent hour.
+    while (bucket < at && offsetSeconds(bucket * 1000, zone) !== offset) bucket += 60;
+    keys.add(bucket);
   }
-  return out;
+  return [...keys]
+    .sort((a, b) => a - b)
+    .map((hour) => new Date(hour * 1000).toISOString().replace(".000Z", "Z"));
 }
 
-/** Date and hour keep the two edge buckets distinguishable across midnight. */
-export function hourLabel(hour: string): string {
-  return `${hour.slice(5, 10)} ${hour.slice(11, 16)} UTC`;
+export function hourLabel(hour: string, zone = "UTC"): string {
+  return localTimestamp(hour, zone);
 }

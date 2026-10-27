@@ -47,3 +47,20 @@ func TestRollingRangeValidationAndRetention(t *testing.T) {
 	}
 	request("summary", "", 200)
 }
+
+func TestViewerTimezoneIsValidatedAndReturned(t *testing.T) {
+	s := newServer(t)
+	routes := s.Routes(http.NotFoundHandler())
+	for _, zone := range []string{"Unknown/Nowhere", "Local", "../etc/passwd", strings.Repeat("x", 129)} {
+		rec := httptest.NewRecorder()
+		routes.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/heatmap?timezone="+zone, nil))
+		if rec.Code != 400 {
+			t.Errorf("zone %q: %d", zone, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	routes.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/heatmap?timezone=Asia/Dubai", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"timezone":"Asia/Dubai"`) {
+		t.Fatalf("viewer zone missing: %d %s", rec.Code, rec.Body.String())
+	}
+}

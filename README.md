@@ -80,7 +80,11 @@ whose `gh` token it was given. The token is not stored.
   place in either.
 - **Cache reads have their own chart.** They are most of the tokens and bill
   at a fraction of input, so charted with everything else they flatten it.
-- **Days are UTC days.** The dashboard says when one starts on your clock.
+- **Hours follow your timezone automatically.** The dashboard uses the browser's
+  timezone for 24h charts, comparison timestamps, and the activity heatmap,
+  including daylight-saving changes. **Daily totals and date filters remain UTC
+  days**, and the dashboard says when one starts on your clock. Retained daily
+  rollups cannot be accurately re-split into local calendar days.
 - **Unpriced means unknown, not free.** A model missing from the price table
   is counted but not costed.
 

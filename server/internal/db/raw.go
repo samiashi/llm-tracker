@@ -64,12 +64,8 @@ type HeatCell struct {
 // Heatmap buckets activity by local date and hour, and returns the offset it
 // used, in minutes east of UTC, so the dashboard can name the zone.
 //
-// The local offset is computed once in Go and applied as integer arithmetic:
-// strftime(...,'localtime') on every row is opaque to the planner and far
-// slower. The cost is that a range spanning a DST change uses one offset
-// throughout, so hours past the change shift by one. Exact buckets would need
-// each agent's own offset per event; the server's zone is not the developer's
-// anyway.
+// Named viewer zones use each event's DST interval. A 24-column heatmap
+// combines repeated local hours; time-series charts keep distinct instant keys.
 func (d *DB) Heatmap(ctx context.Context, w Window) ([]HeatCell, int, error) {
 	w = w.Normalise()
 
@@ -82,12 +78,13 @@ func (d *DB) Heatmap(ctx context.Context, w Window) ([]HeatCell, int, error) {
 		w.From = first
 	}
 
-	// Offset at the midpoint of the range, so a range mostly inside DST uses
-	// the offset that covers most of it.
-	from, _ := time.ParseInLocation("2006-01-02", w.From, time.Local)
-	to, _ := time.ParseInLocation("2006-01-02", w.To, time.Local)
-	mid := from.Add(to.Sub(from) / 2)
-	_, offset := mid.Zone()
+	zone := w.Zone
+	if zone == nil {
+		zone = time.Local
+	}
+	from, _ := time.Parse(time.DateOnly, w.From)
+	to, _ := time.Parse(time.DateOnly, w.To)
+	_, offset := from.Add(to.Sub(from) / 2).In(zone).Zone()
 	if w.From > w.To {
 		return make([]HeatCell, 0), offset / 60, nil
 	}
@@ -101,10 +98,10 @@ func (d *DB) Heatmap(ctx context.Context, w Window) ([]HeatCell, int, error) {
 	// Grouped on the local hour as an integer, and only each bucket turned
 	// into a date: formatting every row's timestamp doubled the query.
 	rows, err := d.read.QueryContext(ctx, `
-		SELECT (ts + ?) / 3600 AS hour, SUM(total_tokens), COUNT(*)
+		SELECT `+w.hourSQL(zone, false)+` AS hour, SUM(total_tokens), COUNT(*)
 		FROM event WHERE `+where+`
 		GROUP BY hour ORDER BY hour`,
-		append([]any{offset}, args...)...)
+		args...)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -6,6 +6,7 @@ import compare from "./fixtures/api/compare.json";
 import daily from "./fixtures/api/daily.json";
 import dailyModel from "./fixtures/api/daily-model.json";
 import health from "./fixtures/api/health.json";
+import viewerHeatmap from "./fixtures/api/heatmap-viewer.json";
 import heatmap from "./fixtures/api/heatmap.json";
 import matrix from "./fixtures/api/matrix.json";
 import sessions from "./fixtures/api/sessions.json";
@@ -39,6 +40,10 @@ const replies = {
 } satisfies Record<Call, unknown>;
 
 describe("server contract", () => {
+  it("carries the requested viewer timezone", () => {
+    const response = viewerHeatmap satisfies Reply<"heatmap">;
+    expect(response.timezone).toBe("Asia/Dubai");
+  });
   it("has a server-generated fixture for every call the dashboard makes", () => {
     for (const reply of Object.values(replies)) expect(reply).toBeTruthy();
   });

@@ -50,7 +50,7 @@ export function TokenChart({
   const hourly = range?.start !== undefined && range?.end !== undefined;
   const byHour = new Map(days.map((d) => [d.day, d]));
   const filled = hourly
-    ? calendarHours(range.start!, range.end!).map(
+    ? calendarHours(range.start!, range.end!, range.timezone).map(
         (day) => byHour.get(day) ?? { day, totals: EMPTY_TOTALS },
       )
     : fillDays(
@@ -61,7 +61,7 @@ export function TokenChart({
       );
   const withYear = spansYears(range?.from, range?.to);
   const data = filled.map((d) => ({
-    day: hourly ? hourLabel(d.day) : shortDay(d.day, withYear),
+    day: hourly ? hourLabel(d.day, range?.timezone) : shortDay(d.day, withYear),
     ...Object.fromEntries(series.map((s) => [s.key, d.totals[s.key]])),
   }));
 
@@ -70,7 +70,7 @@ export function TokenChart({
       data={data}
       lines={series}
       height={height}
-      label={`${series.map((s) => s.name).join(" and ")} per ${hourly ? "hour (UTC)" : "day"}, ${filled.length} ${hourly ? "hourly buckets" : "days"}`}
+      label={`${series.map((s) => s.name).join(" and ")} per ${hourly ? `hour (${range?.timezone || "UTC"})` : "day"}, ${filled.length} ${hourly ? "hourly buckets" : "days"}`}
     />
   );
 }

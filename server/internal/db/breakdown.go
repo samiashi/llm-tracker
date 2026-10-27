@@ -102,7 +102,7 @@ func effortOrder(col string) string {
 	return b.String()
 }
 
-// ModelDay is one model's tokens per UTC day, or per UTC hour for 24h.
+// ModelDay is one model's tokens per UTC day, or per viewer-local hour for 24h.
 type ModelDay struct {
 	Day    string `json:"day"`
 	Model  string `json:"model"`

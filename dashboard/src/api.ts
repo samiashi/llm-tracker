@@ -21,7 +21,7 @@ export type Totals = {
 };
 
 export type Group = { key: string; totals: Totals };
-/** day is a UTC date, or an RFC3339 UTC hour when requesting 24h. */
+/** day is a UTC date, or the UTC instant starting a local-hour bucket for 24h. */
 export type Daily = { day: string; totals: Totals };
 
 /**
@@ -43,7 +43,7 @@ export type SourceHealth = {
   events: number;
 };
 
-/** One hour of activity, bucketed in the server's time zone rather than UTC. */
+/** One local clock-hour of activity in the requested viewer zone. */
 export type HeatCell = {
   day: string;
   weekday: number;
@@ -56,8 +56,10 @@ type HeatmapResult = {
   cells: HeatCell[];
   /** First UTC day with per-event detail; absent or empty when nothing was pruned. */
   detail_from?: string;
-  /** The zone the hours are in, in minutes east of UTC. */
+  /** Midpoint offset for legacy clients; use timezone for DST-aware labels. */
   utc_offset_minutes: number;
+  /** Requested viewer zone; absent on older servers. */
+  timezone?: string;
 };
 
 export type SessionRow = {
@@ -108,7 +110,14 @@ export type UnknownRow = {
 };
 
 /** UTC days, optionally narrowed to a half-open range of Unix seconds for 24h. */
-export type Filter = { from: string; to: string; person?: string; start?: number; end?: number };
+export type Filter = {
+  from: string;
+  to: string;
+  person?: string;
+  start?: number;
+  end?: number;
+  timezone?: string;
+};
 
 /** The prior window of equal length; the current one is the summary's. */
 export type Compare = {
@@ -216,6 +225,7 @@ function qs(f: Filter, extra: Record<string, string | number> = {}): string {
     p.set("start", String(f.start));
     p.set("end", String(f.end));
   }
+  if (f.timezone) p.set("timezone", f.timezone);
   if (f.person) p.set("person", f.person);
   for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
   return p.toString();
