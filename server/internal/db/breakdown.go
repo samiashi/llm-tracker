@@ -27,7 +27,7 @@ func (d *DB) breakdown(ctx context.Context, w Window, dimension, joinSQL string)
 	where, args := w.where("e.")
 	// Ordered by tokens, the length every caller draws, then by key, so equal
 	// rows keep their places between two loads.
-	q := fmt.Sprintf(`SELECT %s, %s FROM event_daily e %s WHERE %s
+	q := fmt.Sprintf(`SELECT %s, %s FROM `+w.relation()+` e %s WHERE %s
 	                  GROUP BY 1 ORDER BY SUM(e.total_tokens) DESC, 1`,
 		dimension, totalsSelect, joinSQL, where)
 	rows, err := d.read.QueryContext(ctx, q, args...)
@@ -121,12 +121,12 @@ func (d *DB) DailyByModel(ctx context.Context, w Window, top int) ([]ModelDay, e
 	where, args := w.where("")
 	q := `
 		WITH ranked AS (
-		  SELECT model, SUM(total_tokens) AS t FROM event_daily
+		  SELECT model, SUM(total_tokens) AS t FROM ` + w.relation() + `
 		  WHERE ` + where + ` AND model != ''
 		  GROUP BY model ORDER BY t DESC, model LIMIT ?
 		)
 		SELECT day, model, SUM(total_tokens)
-		FROM event_daily WHERE ` + where + `
+		FROM ` + w.relation() + ` WHERE ` + where + `
 		  AND model IN (SELECT model FROM ranked)
 		GROUP BY 1, 2 ORDER BY 1, 2`
 	qargs := append(append([]any{}, args...), modelSeries.of(top))
@@ -179,7 +179,7 @@ func (d *DB) Export(ctx context.Context, w Window) ([]ExportRow, error) {
 		       SUM(e.total_tokens), SUM(e.input_tokens), SUM(e.output_tokens),
 		       SUM(e.cache_read_tokens), SUM(e.cost_usd), e.cost_basis, SUM(e.events),
 		       `+unpricedUsage+`
-		FROM event_daily e LEFT JOIN account a ON a.ref = e.account_ref
+		FROM `+w.relation()+` e LEFT JOIN account a ON a.ref = e.account_ref
 		WHERE `+where+`
 		GROUP BY 1,2,3,4,5,6,12 ORDER BY 1 DESC, 7 DESC, 2,3,4,5,6,12`, args...)
 	if err != nil {
@@ -257,7 +257,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 		order = effortOrder(rowCol) + ", 3 DESC, 2"
 	} else {
 		rowFilter = fmt.Sprintf(`%[1]s IN (
-		  SELECT %[1]s FROM event_daily WHERE %[2]s AND %[1]s != ''
+		  SELECT %[1]s FROM `+w.relation()+` WHERE %[2]s AND %[1]s != ''
 		  GROUP BY 1 ORDER BY SUM(total_tokens) DESC, 1 LIMIT ?)`, rowCol, where)
 		qargs = append(append(qargs, args...), matrixRows.of(limit))
 	}
@@ -268,7 +268,7 @@ func (d *DB) Matrix(ctx context.Context, w Window, rows, cols string, limit int)
 		       `+rateCardUSD+`,
 		       `+unknownBasisUSD+`,
 		       `+unpricedUsage+`
-		FROM event_daily
+		FROM `+w.relation()+`
 		WHERE %[3]s AND %[4]s
 		GROUP BY 1, 2 ORDER BY %[5]s`, rowCol, colCol, where, rowFilter, order)
 

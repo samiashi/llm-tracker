@@ -8,11 +8,21 @@ import (
 //
 // Person is an email rather than an account reference, because one colleague
 // holds several logins and drilling into "them" means all of them.
-type Window struct{ From, To, Person string }
+type Window struct {
+	From, To, Person string
+	// Start and End select a half-open timestamp range [Start, End). Only the
+	// rolling 24h view uses this exception to the day-rollup rule.
+	Start, End int64
+}
 
 // Normalise fills in the default window, the last 30 UTC days. A caller that
 // reports the range it served, like the CSV filename, settles it first.
 func (w Window) Normalise() Window {
+	if w.End > 0 {
+		w.From = time.Unix(w.Start, 0).UTC().Format(time.DateOnly)
+		w.To = time.Unix(w.End-1, 0).UTC().Format(time.DateOnly)
+		return w
+	}
 	if w.To == "" {
 		w.To = time.Now().UTC().Format("2006-01-02")
 	}
@@ -31,6 +41,10 @@ const unknownKey = "unknown"
 func (w Window) where(col string) (string, []any) {
 	clause := col + "day BETWEEN ? AND ?"
 	args := []any{w.From, w.To}
+	if w.End > 0 {
+		clause += " AND " + col + "ts >= ? AND " + col + "ts < ?"
+		args = append(args, w.Start, w.End)
+	}
 	if w.Person != "" {
 		clause += " AND " + col + "account_ref IN " + personRefs
 		args = append(args, personArgs(w.Person)...)
@@ -63,4 +77,14 @@ func (l listLen) of(n int) int {
 		return l.def
 	}
 	return min(n, l.max)
+}
+
+// relation preserves the aggregate column contract for timestamp windows.
+// Whole-day queries must keep using event_daily so retention is invisible.
+// A raw event counts as one response; cost and token fields remain one reading.
+func (w Window) relation() string {
+	if w.End > 0 {
+		return "(SELECT *, 1 AS events FROM event)"
+	}
+	return "event_daily"
 }

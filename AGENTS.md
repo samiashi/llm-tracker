@@ -72,7 +72,9 @@ wrong numbers, and the comment above the code says which.
    triggers. Three queries are exempt because they need something a
    day-level rollup cannot hold — `Heatmap` (hour of day), `TopSessions`
    (session id) and `SourceHealth` (the last event's time) — and so see only
-   what has not been rolled up, by design. Anything answering a windowed
+   what has not been rolled up, by design. The rolling 24h filter is also
+   exempt: its exact timestamp bounds read raw events, and the API refuses
+   ranges whose detail has been pruned. Whole-day totals continue to use the view. Anything answering a whole-day windowed
    _total_ belongs on the view; adding a new one against `event` silently
    under-reports every pruned day. `EarliestRawDay` and `RollupsBefore` read
    `event` and `daily_rollup` directly to find where rollups end, so a branch

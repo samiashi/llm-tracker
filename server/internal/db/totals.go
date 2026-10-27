@@ -89,7 +89,7 @@ func scanTotals(row interface{ Scan(...any) error }) (Totals, error) {
 func (d *DB) Totals(ctx context.Context, w Window) (Totals, error) {
 	w = w.Normalise()
 	where, args := w.where("")
-	row := d.read.QueryRowContext(ctx, `SELECT `+totalsSelect+` FROM event_daily WHERE `+where, args...)
+	row := d.read.QueryRowContext(ctx, `SELECT `+totalsSelect+` FROM `+w.relation()+` WHERE `+where, args...)
 	return scanTotals(row)
 }
 
@@ -103,7 +103,7 @@ func (d *DB) Daily(ctx context.Context, w Window) ([]Daily, error) {
 	w = w.Normalise()
 	where, args := w.where("")
 	rows, err := d.read.QueryContext(ctx,
-		`SELECT day, `+totalsSelect+` FROM event_daily WHERE `+where+` GROUP BY day ORDER BY day`, args...)
+		`SELECT day, `+totalsSelect+` FROM `+w.relation()+` WHERE `+where+` GROUP BY day ORDER BY day`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +132,13 @@ type Compare struct {
 
 func (d *DB) Compare(ctx context.Context, w Window) (Compare, error) {
 	w = w.Normalise()
+	if w.End > 0 {
+		prev := Window{Start: w.Start - (w.End - w.Start), End: w.Start, Person: w.Person}
+		totals, err := d.Totals(ctx, prev)
+		return Compare{Previous: totals,
+			PreviousFrom: time.Unix(prev.Start, 0).UTC().Format(time.RFC3339),
+			PreviousTo:   time.Unix(prev.End, 0).UTC().Format(time.RFC3339)}, err
+	}
 	from, err := time.Parse("2006-01-02", w.From)
 	if err != nil {
 		return Compare{}, err

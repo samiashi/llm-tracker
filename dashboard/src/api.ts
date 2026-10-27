@@ -105,8 +105,8 @@ export type UnknownRow = {
   note: string;
 };
 
-/** The range every view shares: two UTC days, inclusive. */
-export type Filter = { from: string; to: string; person?: string };
+/** UTC days, optionally narrowed to a half-open range of Unix seconds for 24h. */
+export type Filter = { from: string; to: string; person?: string; start?: number; end?: number };
 
 /** The prior window of equal length; the current one is the summary's. */
 export type Compare = {
@@ -181,6 +181,9 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
  */
 export function describeFailure(e: unknown): { title: string; detail: string } {
   if (e instanceof HttpError) {
+    if (e.status === 422) {
+      return { title: "This time range is unavailable.", detail: e.detail };
+    }
     if (e.status === 400) {
       return { title: "That date range isn't valid.", detail: e.detail || "Choose another." };
     }
@@ -207,6 +210,10 @@ export function describeFailure(e: unknown): { title: string; detail: string } {
 
 function qs(f: Filter, extra: Record<string, string | number> = {}): string {
   const p = new URLSearchParams({ from: f.from, to: f.to });
+  if (f.start !== undefined && f.end !== undefined) {
+    p.set("start", String(f.start));
+    p.set("end", String(f.end));
+  }
   if (f.person) p.set("person", f.person);
   for (const [k, v] of Object.entries(extra)) p.set(k, String(v));
   return p.toString();

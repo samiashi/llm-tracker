@@ -29,11 +29,12 @@ function unpricedMark(g: Group) {
 }
 
 const PRESETS = [
+  { label: "24h", days: "24h" },
   { label: "7d", days: 7 },
   { label: "30d", days: 30 },
   { label: "90d", days: 90 },
   { label: "All", days: MAX_DAYS },
-];
+] as const;
 
 export default function App() {
   const [intent, setIntent] = useState<Intent>(() => intentFromURL());
@@ -67,9 +68,19 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, [intent]);
 
-  const load = useCallback((signal: AbortSignal) => loadDashboard(filter, signal), [filter]);
+  // Resolve once per fetch so every panel shares exact bounds, including
+  // manual refresh and resuming a tab that was hidden across midnight.
+  const load = useCallback(
+    (signal: AbortSignal) => loadDashboard(resolve(intent, Date.now()), signal),
+    [intent],
+  );
 
-  const live = useLiveData<Data>(load, `${filter.from}|${filter.to}|${filter.person ?? ""}`);
+  const live = useLiveData<Data>(
+    load,
+    intent.preset === "24h"
+      ? `24h|${filter.person ?? ""}`
+      : `${filter.from}|${filter.to}|${filter.person ?? ""}`,
+  );
   const { data, loading, refreshing, updatedAt } = live;
   const loadFailed = live.error !== null;
 
@@ -120,7 +131,7 @@ export default function App() {
             <span className="cadence">auto {POLL_MS / 1000}s · agents 5m</span>
           </span>
           {/* An action on the range, not an input to it, so it sits with refresh. */}
-          <a className="export" href={api.exportURL(filter)} download>
+          <a className="export" href={api.exportURL(resolve(intent, clock))} download>
             export CSV
           </a>
         </span>
@@ -164,10 +175,17 @@ export default function App() {
         <span
           className="tz"
           id={tzId}
-          title={`Every card but the hourly grid counts UTC days, as the server stores them${localOffset ? `: in your time zone (${utcOffset(localOffset)}) each runs ${dayStart}–${dayStart}` : ""}.`}
+          title={
+            intent.preset === "24h"
+              ? "Counts events in the last 24 hours, refreshed each minute. Daily charts include only the portion of each UTC day inside that window."
+              : `Every card but the hourly grid counts UTC days, as the server stores them${localOffset ? `: in your time zone (${utcOffset(localOffset)}) each runs ${dayStart}–${dayStart}` : ""}.`
+          }
         >
           <span className="tz-pill">UTC</span>
-          {localOffset !== 0 && (
+          {intent.preset === "24h" && (
+            <span>rolling last 24 hours · daily charts show partial days</span>
+          )}
+          {intent.preset !== "24h" && localOffset !== 0 && (
             <span className="tz-local">
               days run {dayStart}–{dayStart} your time
             </span>

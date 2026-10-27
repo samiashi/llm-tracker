@@ -112,3 +112,25 @@ describe("a shared link opens a range the page can draw", () => {
     expect(open("?from=2024-02-29&to=2024-03-01")).toMatchObject({ from: "2024-02-29" });
   });
 });
+
+describe("rolling 24h", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+  test("spans exactly 86400 seconds across DST and rolls forward", () => {
+    const now = Date.UTC(2026, 8, 6, 4, 30);
+    const f = resolve({ preset: "24h", person: "dev@example.com" }, now);
+    expect(f.end! - f.start!).toBe(86400);
+    expect(f.from).toBe("2026-09-05");
+    expect(f.to).toBe("2026-09-06");
+    expect(f.person).toBe("dev@example.com");
+    expect(resolve({ preset: "24h" }, now + 60000).start).toBe(f.start! + 60);
+  });
+  test("an exclusive midnight end does not add a third calendar day", () => {
+    const f = resolve({ preset: "24h" }, Date.UTC(2026, 8, 6));
+    expect(f.from).toBe("2026-09-05");
+    expect(f.to).toBe("2026-09-05");
+  });
+  test("shared links preserve relative intent and person", () => {
+    window.history.replaceState(null, "", "/?preset=24h&person=dev%40example.com");
+    expect(intentFromURL()).toEqual({ preset: "24h", person: "dev@example.com" });
+  });
+});

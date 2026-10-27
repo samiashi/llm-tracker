@@ -6,7 +6,7 @@ import { CARD_PARAM } from "@/expanded";
  * dates. The concrete range is derived from this and the clock, so a relative
  * window follows midnight instead of freezing on the day it was chosen.
  */
-export type Intent = { preset?: number; from?: string; to?: string; person?: string };
+export type Intent = { preset?: number | "24h"; from?: string; to?: string; person?: string };
 
 /** The widest range, in days: the "All" preset. Every day axis gap-fills at most this many. */
 export const MAX_DAYS = 3650;
@@ -44,6 +44,17 @@ const clamp = (day: string, lo: string, hi: string) => (day < lo ? lo : day > hi
  * send a reversed range or gap-fill years that have no data.
  */
 export function resolve(intent: Intent, now: number): Filter {
+  if (intent.preset === "24h") {
+    const end = Math.floor(now / 1000);
+    const start = end - 24 * 60 * 60;
+    return {
+      from: isoAt(start * 1000),
+      to: isoAt((end - 1) * 1000),
+      start,
+      end,
+      person: intent.person,
+    };
+  }
   const today = isoAt(now);
   const floor = isoAt(now, MAX_DAYS - 1);
   let from: string;
@@ -71,6 +82,7 @@ export function intentFromURL(now: number = Date.now()): Intent {
   const p = new URLSearchParams(window.location.search);
   const person = p.get("person") || undefined;
 
+  if (p.get("preset") === "24h") return { preset: "24h", person };
   const preset = Number(p.get("preset"));
   if (Number.isInteger(preset) && preset > 0 && preset <= MAX_DAYS) return { preset, person };
 

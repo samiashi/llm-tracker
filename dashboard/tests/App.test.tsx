@@ -743,3 +743,58 @@ describe("relative times", () => {
     expect(screen.getByText("updated 30s ago")).toBeTruthy();
   });
 });
+
+describe("rolling 24h preset", () => {
+  it("shares exact bounds across panels, refreshes forward, and exports the range", async () => {
+    const fetcher = mockFetch();
+    vi.stubGlobal("fetch", fetcher);
+    const tick = clockTicks();
+    render(<App />);
+    await loaded();
+    fetcher.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "24h" }));
+    await waitFor(() => expect(window.location.search).toContain("preset=24h"));
+    await loaded();
+    const params = () =>
+      fetcher.mock.calls
+        .map(([url]) => new URL(urlOf(url), "http://localhost").searchParams)
+        .filter((p) => p.has("from"));
+    await waitFor(() => expect(params().length).toBeGreaterThan(10));
+    const end = Math.floor(Date.now() / 1000);
+    for (const p of params()) {
+      expect(Number(p.get("end"))).toBe(end);
+      expect(Number(p.get("start"))).toBe(end - 86400);
+    }
+    expect(screen.getByRole("button", { name: "24h" }).getAttribute("aria-pressed")).toBe("true");
+    const csv = new URL(
+      screen.getByRole("link", { name: "export CSV" }).getAttribute("href")!,
+      "http://localhost",
+    );
+    expect(csv.searchParams.get("end")).toBe(String(end));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "refresh" }).hasAttribute("disabled")).toBe(false),
+    );
+    fetcher.mockClear();
+    tick(60000);
+    fireEvent.click(screen.getByRole("button", { name: "refresh" }));
+    await waitFor(() => expect(params().length).toBeGreaterThan(10));
+    for (const p of params()) expect(Number(p.get("end"))).toBe(end + 60);
+    fetcher.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "7d" }));
+    await waitFor(() => expect(params().length).toBeGreaterThan(10));
+    for (const p of params()) expect(p.has("start")).toBe(false);
+  });
+
+  it("explains unavailable retained detail without showing zero usage", async () => {
+    window.history.replaceState(null, "", "/?preset=24h");
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({ "/v1/summary": () => fail(422, "Retention removed per-event timestamps.") }),
+    );
+    render(<App />);
+    expect(await screen.findByText("This time range is unavailable.")).toBeTruthy();
+    expect(screen.getByText("Retention removed per-event timestamps.")).toBeTruthy();
+    expect(screen.queryByText("Total tokens")).toBeNull();
+    expect(screen.getByRole("button", { name: "7d" })).toBeTruthy();
+  });
+});
