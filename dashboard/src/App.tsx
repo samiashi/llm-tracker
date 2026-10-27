@@ -177,14 +177,12 @@ export default function App() {
           id={tzId}
           title={
             intent.preset === "24h"
-              ? "Counts events in the last 24 hours, refreshed each minute. Daily charts include only the portion of each UTC day inside that window."
+              ? "Counts events in the last 24 hours, refreshed each minute. Charts show UTC hours; the first and last hours may be partial."
               : `Every card but the hourly grid counts UTC days, as the server stores them${localOffset ? `: in your time zone (${utcOffset(localOffset)}) each runs ${dayStart}–${dayStart}` : ""}.`
           }
         >
           <span className="tz-pill">UTC</span>
-          {intent.preset === "24h" && (
-            <span>rolling last 24 hours · daily charts show partial days</span>
-          )}
+          {intent.preset === "24h" && <span>rolling last 24 hours · hourly charts (UTC)</span>}
           {intent.preset !== "24h" && localOffset !== 0 && (
             <span className="tz-local">
               days run {dayStart}–{dayStart} your time
@@ -273,9 +271,12 @@ const Dashboard = memo(function Dashboard({
   // The range the figures on screen were fetched for, clamped to the first
   // recorded day so "All" does not draw ten years against a week of data.
   const range = {
+    ...data.range,
     from: firstDay && firstDay > data.range.from ? firstDay : data.range.from,
     to: data.range.to,
   };
+
+  const interval = data.range.start !== undefined ? "hour (UTC)" : "day";
 
   const rated = data.models
     .filter((g) => g.totals.billed_usd > 0)
@@ -343,7 +344,7 @@ const Dashboard = memo(function Dashboard({
         <Card
           title="Billable input & output"
           failed={down.has("daily")}
-          note="Input and output tokens per day, the ones that drive cost. Lines overlap rather than stack; cache traffic has its own chart because it runs about 40× larger."
+          note={`Input and output tokens per ${interval}, the ones that drive cost. Lines overlap rather than stack; cache traffic has its own chart because it runs about 40× larger.`}
         >
           {(v) => (
             <TokenChart
@@ -360,7 +361,7 @@ const Dashboard = memo(function Dashboard({
         <Card
           title="Cache traffic"
           failed={down.has("daily")}
-          note="Cache reads and writes per day. Lines overlap rather than stack. Reads usually dwarf all other tokens but cost about a tenth of the input price."
+          note={`Cache reads and writes per ${interval}. Lines overlap rather than stack. Reads usually dwarf all other tokens but cost about a tenth of the input price.`}
         >
           {(v) => (
             <TokenChart
@@ -380,7 +381,7 @@ const Dashboard = memo(function Dashboard({
         <Card
           title="Model mix over time"
           failed={down.has("daily/model")}
-          note={`Tokens per day for the ${charted.size} busiest models${otherModels > 0 ? `; the other ${otherModels} are under By model` : ""}. Lines overlap rather than stack, and each model keeps one colour for the whole range.`}
+          note={`Tokens per ${interval} for the ${charted.size} busiest models${otherModels > 0 ? `; the other ${otherModels} are under By model` : ""}. Lines overlap rather than stack, and each model keeps one colour for the whole range.`}
         >
           {(v) => <ModelChart points={data.modelDays} range={range} height={v.chartHeight} />}
         </Card>

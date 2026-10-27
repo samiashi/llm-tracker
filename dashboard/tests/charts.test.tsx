@@ -117,3 +117,38 @@ describe("time-series charts", () => {
     expect(drawn).toHaveLength(0);
   });
 });
+
+describe("24h hourly series", () => {
+  it("fills missing hours and preserves partial edges across midnight and DST", () => {
+    const start = Date.parse("2026-09-05T15:37:00Z") / 1000;
+    const hourly = { from: "2026-09-05", to: "2026-09-06", start, end: start + 86400 };
+    render(
+      <TokenChart
+        range={hourly}
+        series={series}
+        days={[
+          { day: "2026-09-05T15:00:00Z", totals: { ...zero, input_tokens: 5 } },
+          { day: "2026-09-06T15:00:00Z", totals: { ...zero, input_tokens: 7 } },
+        ]}
+      />,
+    );
+    render(
+      <ModelChart
+        range={hourly}
+        points={[
+          { day: "2026-09-05T15:00:00Z", model: "a", tokens: 5 },
+          { day: "2026-09-06T15:00:00Z", model: "a", tokens: 7 },
+        ]}
+      />,
+    );
+    for (const chart of drawn) {
+      expect(chart.data).toHaveLength(25);
+      expect(chart.data[0].day).toBe("09-05 15:00 UTC");
+      expect(chart.data[24].day).toBe("09-06 15:00 UTC");
+      expect(new Set(chart.data.map((row) => row.day)).size).toBe(25);
+    }
+    expect(drawn[0].data.map((row) => row.input_tokens)).toEqual([5, ...Array(23).fill(0), 7]);
+    expect(drawn[1].data.map((row) => row.a)).toEqual([5, ...Array(23).fill(0), 7]);
+    expect(screen.getByRole("img", { name: /Input and Output per hour/ })).toBeTruthy();
+  });
+});

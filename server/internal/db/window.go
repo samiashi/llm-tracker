@@ -88,3 +88,12 @@ func (w Window) relation() string {
 	}
 	return "event_daily"
 }
+
+// bucket uses UTC clock hours only for exact timestamp windows. The first
+// and last bucket may be partial; where still clips events to the exact bounds.
+func (w Window) bucket() string {
+	if w.End > 0 {
+		return "strftime('%Y-%m-%dT%H:00:00Z', ts, 'unixepoch')"
+	}
+	return "day"
+}

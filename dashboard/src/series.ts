@@ -55,4 +55,20 @@ export function fillDays<T>(
 }
 
 /** The window the page is showing; charts gap-fill to it (see `fillDays`). */
-export type DayRange = { from: string; to: string };
+export type DayRange = { from: string; to: string; start?: number; end?: number };
+
+/** UTC clock hours intersecting [start, end), including partial edge hours.
+ * Step by elapsed seconds so midnight and DST never skip or repeat a bucket.
+ */
+export function calendarHours(start: number, end: number): string[] {
+  const out: string[] = [];
+  for (let hour = Math.floor(start / 3600) * 3600; hour < end; hour += 3600) {
+    out.push(new Date(hour * 1000).toISOString().replace(".000Z", "Z"));
+  }
+  return out;
+}
+
+/** Date and hour keep the two edge buckets distinguishable across midnight. */
+export function hourLabel(hour: string): string {
+  return `${hour.slice(5, 10)} ${hour.slice(11, 16)} UTC`;
+}

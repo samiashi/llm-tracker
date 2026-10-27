@@ -102,7 +102,7 @@ func effortOrder(col string) string {
 	return b.String()
 }
 
-// ModelDay is one model's tokens on one day.
+// ModelDay is one model's tokens per UTC day, or per UTC hour for 24h.
 type ModelDay struct {
 	Day    string `json:"day"`
 	Model  string `json:"model"`
@@ -125,7 +125,7 @@ func (d *DB) DailyByModel(ctx context.Context, w Window, top int) ([]ModelDay, e
 		  WHERE ` + where + ` AND model != ''
 		  GROUP BY model ORDER BY t DESC, model LIMIT ?
 		)
-		SELECT day, model, SUM(total_tokens)
+		SELECT ` + w.bucket() + `, model, SUM(total_tokens)
 		FROM ` + w.relation() + ` WHERE ` + where + `
 		  AND model IN (SELECT model FROM ranked)
 		GROUP BY 1, 2 ORDER BY 1, 2`

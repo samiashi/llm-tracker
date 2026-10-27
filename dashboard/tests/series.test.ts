@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calendarDays, fillDays } from "@/series";
+import { calendarDays, calendarHours, fillDays } from "@/series";
 
 describe("calendarDays", () => {
   it("includes both endpoints", () => {
@@ -116,4 +116,11 @@ describe("fillDays", () => {
     fillDays(rows, (r) => r.day, blank);
     expect(rows).toEqual(copy);
   });
+});
+
+it("hourly series excludes an end exactly on the hour", () => {
+  const start = Date.parse("2026-09-06T00:00:00Z") / 1000;
+  const hours = calendarHours(start, start + 86400);
+  expect(hours).toHaveLength(24);
+  expect(hours[23]).toBe("2026-09-06T23:00:00Z");
 });

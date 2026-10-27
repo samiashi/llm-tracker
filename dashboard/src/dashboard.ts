@@ -75,7 +75,7 @@ export type Data = {
    * than on the range just picked, or old data would be redrawn over the new
    * range until the new data arrived.
    */
-  range: { from: string; to: string };
+  range: Filter;
   /** The settleAll keys of the requests that failed, so each card can say so. */
   failed: RequestName[];
   summary: Summary;
@@ -155,7 +155,7 @@ export async function loadDashboard(filter: Filter, signal: AbortSignal): Promis
   });
 
   return {
-    range: { from: filter.from, to: filter.to },
+    range: { ...filter },
     summary,
     days: valueOr(r.daily, { days: [] }).days,
     modelDays: valueOr(r["daily/model"], { points: [] }).points,

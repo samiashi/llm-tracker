@@ -21,6 +21,7 @@ export type Totals = {
 };
 
 export type Group = { key: string; totals: Totals };
+/** day is a UTC date, or an RFC3339 UTC hour when requesting 24h. */
 export type Daily = { day: string; totals: Totals };
 
 /**
@@ -75,6 +76,7 @@ export type SessionRow = {
   last_seen: number;
 };
 
+/** Shares Daily's date or hour bucket keys. */
 export type ModelDay = { day: string; model: string; tokens: number };
 
 /** `col_order` is present for an ordinal dimension such as effort, where the order is the meaning. */

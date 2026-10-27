@@ -89,3 +89,49 @@ func TestRollingWindowUsesExactBoundsAcrossEveryView(t *testing.T) {
 		t.Fatalf("person filter: %+v (%v)", totals, err)
 	}
 }
+
+func TestRollingSeriesGroupsByUTCHourAndPreservesTotals(t *testing.T) {
+	d := newDB(t)
+	ctx := context.Background()
+	start := time.Date(2026, 9, 5, 15, 37, 0, 0, time.UTC)
+	offsets := []time.Duration{-time.Second, 0, time.Minute, 24 * time.Minute, 23 * time.Hour, 24 * time.Hour}
+	for i, offset := range offsets {
+		e := ev(string(rune('a'+i)), 100, schema.CostBilled)
+		e.TS = start.Add(offset)
+		ingest(t, d, e)
+	}
+	w := Window{Start: start.Unix(), End: start.Add(24 * time.Hour).Unix()}
+	want := map[string]int64{"2026-09-05T15:00:00Z": 200, "2026-09-05T16:00:00Z": 100, "2026-09-06T14:00:00Z": 100}
+	days, err := d.Daily(ctx, w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(days) != len(want) {
+		t.Fatalf("hourly buckets: %+v", days)
+	}
+	for _, day := range days {
+		if day.Totals.TotalTokens != want[day.Day] {
+			t.Errorf("hour %+v, want %d", day, want[day.Day])
+		}
+	}
+	models, err := d.DailyByModel(ctx, w, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != len(want) {
+		t.Fatalf("model buckets: %+v", models)
+	}
+	for _, point := range models {
+		if point.Tokens != want[point.Day] {
+			t.Errorf("model hour %+v, want %d", point, want[point.Day])
+		}
+	}
+	totals, err := d.Totals(ctx, w)
+	if err != nil || totals.TotalTokens != 400 {
+		t.Fatalf("totals: %+v (%v)", totals, err)
+	}
+	days, err = d.Daily(ctx, Window{From: "2026-09-05", To: "2026-09-06"})
+	if err != nil || len(days) != 2 || days[0].Day != "2026-09-05" {
+		t.Fatalf("daily range changed: %+v (%v)", days, err)
+	}
+}

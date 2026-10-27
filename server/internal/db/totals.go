@@ -93,7 +93,7 @@ func (d *DB) Totals(ctx context.Context, w Window) (Totals, error) {
 	return scanTotals(row)
 }
 
-// Daily is one day of the time series.
+// Daily is one time-series bucket: a UTC date, or an RFC3339 UTC hour for 24h.
 type Daily struct {
 	Day    string `json:"day"`
 	Totals Totals `json:"totals"`
@@ -103,7 +103,7 @@ func (d *DB) Daily(ctx context.Context, w Window) ([]Daily, error) {
 	w = w.Normalise()
 	where, args := w.where("")
 	rows, err := d.read.QueryContext(ctx,
-		`SELECT day, `+totalsSelect+` FROM `+w.relation()+` WHERE `+where+` GROUP BY day ORDER BY day`, args...)
+		`SELECT `+w.bucket()+`, `+totalsSelect+` FROM `+w.relation()+` WHERE `+where+` GROUP BY 1 ORDER BY 1`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,7 @@
 import type { ModelDay } from "@/api";
 import { shortDay, spansYears } from "@/format";
 import { MODEL_SLOTS } from "@/palette";
-import { calendarDays } from "@/series";
+import { calendarDays, calendarHours, hourLabel } from "@/series";
 import type { DayRange } from "@/series";
 import { OverlaidAreas } from "@/components/OverlaidAreas";
 
@@ -39,14 +39,18 @@ export function ModelChart({
   // missing model draws as a gap rather than the zero it is.
   const days = [...byDay.keys()].sort();
   const withYear = spansYears(range?.from, range?.to);
-  const data = calendarDays(range?.from || days[0], range?.to || days[days.length - 1]).map(
-    (day) => {
-      const row: Record<string, number | string> = { day: shortDay(day, withYear) };
-      const present = byDay.get(day);
-      for (const m of models) row[m] = present?.[m] ?? 0;
-      return row;
-    },
-  );
+  const hourly = range?.start !== undefined && range?.end !== undefined;
+  const buckets = hourly
+    ? calendarHours(range.start!, range.end!)
+    : calendarDays(range?.from || days[0], range?.to || days[days.length - 1]);
+  const data = buckets.map((day) => {
+    const row: Record<string, number | string> = {
+      day: hourly ? hourLabel(day) : shortDay(day, withYear),
+    };
+    const present = byDay.get(day);
+    for (const m of models) row[m] = present?.[m] ?? 0;
+    return row;
+  });
 
   return (
     <OverlaidAreas
@@ -54,7 +58,7 @@ export function ModelChart({
       lines={models.map((m, i) => ({ key: m, name: m, color: MODEL_SLOTS[i] }))}
       height={height}
       showTotal={false}
-      label={`Tokens per day for the busiest models, ${data.length} days`}
+      label={`Tokens per ${hourly ? "hour (UTC)" : "day"} for the busiest models, ${data.length} ${hourly ? "hourly buckets" : "days"}`}
     />
   );
 }
