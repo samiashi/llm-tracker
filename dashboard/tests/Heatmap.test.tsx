@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Heatmap } from "@/components/Heatmap";
 import type { HeatCell } from "@/api";
+import { resolve } from "@/window";
 
 afterEach(cleanup);
 
@@ -79,6 +80,85 @@ describe("heatmap rows", () => {
     );
     expect(screen.queryByText("No activity in this range.")).toBeNull();
     expect(screen.getByText(/not kept before 2026-09-10/)).toBeTruthy();
+  });
+});
+
+describe("rolling heatmap window", () => {
+  const rolling = (end: string, cells: HeatCell[], timezone = "Asia/Dubai") => (
+    <Heatmap
+      range={{ ...resolve({ preset: "24h" }, Date.parse(end)), timezone }}
+      timezone={timezone}
+      serverOffset={240}
+      cells={cells}
+    />
+  );
+
+  it.each([
+    ["active", [cell("2026-10-29", 12), cell("2026-10-30", 1)]],
+    ["idle newest date", [cell("2026-10-29", 12)]],
+    ["entirely idle", []],
+  ])("shows only the selected local dates when %s", (_name, cells) => {
+    // 29 Oct 02:00 through 30 Oct 02:00 Dubai; the UTC dates are 28–29 Oct.
+    render(rolling("2026-10-29T22:00:00Z", cells));
+    expect(rowLabels()).toEqual(["Fri 30 Oct", "Thu 29 Oct"]);
+  });
+
+  it("distinguishes excluded hours from idle hours, including in the tooltip", () => {
+    render(rolling("2026-10-30T10:37:00Z", [cell("2026-10-29", 15)]));
+    for (const label of ["Thu 29 Oct 13:00", "Fri 30 Oct 15:00"]) {
+      const excluded = screen.getByRole("gridcell", { name: `${label} — outside selected window` });
+      act(() => excluded.focus());
+      expect(screen.getByRole("tooltip").textContent).toContain("Outside the selected window");
+      expect(screen.getByRole("tooltip").textContent).not.toContain("No activity");
+    }
+    // Both partial boundary hours are still included, even without events.
+    for (const label of ["Thu 29 Oct 14:00", "Fri 30 Oct 14:00"]) {
+      const idle = screen.getByRole("gridcell", { name: `${label} — no activity` });
+      fireEvent.mouseOver(idle);
+      expect(screen.getByRole("tooltip").textContent).toContain("No activity");
+    }
+  });
+
+  it("does not include the local date beginning at the exclusive end", () => {
+    render(rolling("2026-10-29T20:00:00Z", [cell("2026-10-29", 12)]));
+    expect(rowLabels()).toEqual(["Thu 29 Oct"]);
+    expect(screen.queryAllByRole("gridcell", { name: /outside selected window/ })).toHaveLength(0);
+  });
+
+  it("updates the excluded hours when a poll moves within the same UTC dates", () => {
+    const cells = [cell("2026-10-30", 12)];
+    const { rerender } = render(rolling("2026-10-30T10:00:00Z", cells));
+    expect(
+      screen.getByRole("gridcell", { name: "Fri 30 Oct 14:00 — outside selected window" }),
+    ).toBeTruthy();
+    rerender(rolling("2026-10-30T11:00:00Z", cells));
+    expect(screen.getByRole("gridcell", { name: "Fri 30 Oct 14:00 — no activity" })).toBeTruthy();
+    expect(
+      screen.getByRole("gridcell", { name: "Thu 29 Oct 14:00 — outside selected window" }),
+    ).toBeTruthy();
+  });
+
+  it.each([
+    ["America/Santiago", "2026-09-06T15:00:00Z", "Sun 6 Sep 00:00", "Sun 6 Sep 01:00"],
+    ["Australia/Lord_Howe", "2026-10-04T05:00:00Z", "Sun 4 Oct 16:00", "Sun 4 Oct 02:00"],
+    ["Asia/Kathmandu", "2026-10-30T08:15:00Z", "Fri 30 Oct 14:00", "Fri 30 Oct 13:00"],
+  ])("marks only real intersecting clock hours in %s", (zone, end, excluded, included) => {
+    render(rolling(end, [], zone));
+    expect(
+      screen.getByRole("gridcell", { name: `${excluded} — outside selected window` }),
+    ).toBeTruthy();
+    expect(screen.getByRole("gridcell", { name: `${included} — no activity` })).toBeTruthy();
+  });
+
+  it("preserves combined repeated-hour tokens across the fall-back", () => {
+    render(rolling("2026-11-01T17:00:00Z", [cell("2026-11-01", 1, 3000)], "America/New_York"));
+    expect(rowLabels()).toEqual(["Sun 1 Nov", "Sat 31 Oct"]);
+    const repeated = screen.getByRole("gridcell", { name: "Sun 1 Nov 01:00 — 3.0K tokens" });
+    fireEvent.mouseOver(repeated);
+    expect(screen.getByRole("tooltip").textContent).toContain("100.0%");
+    expect(
+      screen.getByRole("gridcell", { name: "Sun 1 Nov 12:00 — outside selected window" }),
+    ).toBeTruthy();
   });
 });
 

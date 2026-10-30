@@ -590,6 +590,10 @@ tr:last-child td {
 .heat2 .cell:focus-visible {
   outline-color: var(--text-primary);
 }
+/* Excluded hours must not look like measured zero usage. */
+.heat2 .cell.excluded {
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--grid) 3px 4px);
+}
 /* The hovered or focused cell, its row and its hour's column, drawn over the
    grid rather than by restyling cells. */
 .heat2 .hmark {

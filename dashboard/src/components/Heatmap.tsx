@@ -97,16 +97,17 @@ const HeatRow = memo(function HeatRow({
       </span>
       {HOURS.map((h) => {
         const v = row.hours.get(h)?.tokens ?? 0;
+        const excluded = row.selectedHours !== undefined && !row.selectedHours.has(h);
         return (
           <span
             key={h}
             role="gridcell"
-            className="cell"
+            className={`cell${excluded ? " excluded" : ""}`}
             data-r={r}
             data-h={h}
             tabIndex={h === tabHour ? 0 : -1}
-            aria-label={`${label} ${hh(h)}:00 — ${v ? `${tokens(v)} tokens` : "no activity"}`}
-            style={{ background: STEPS[step(v)] }}
+            aria-label={`${label} ${hh(h)}:00 — ${excluded ? "outside selected window" : v ? `${tokens(v)} tokens` : "no activity"}`}
+            style={excluded ? undefined : { background: STEPS[step(v)] }}
           />
         );
       })}
@@ -148,10 +149,12 @@ export function Heatmap({
 }) {
   const [hover, setHover] = useState<Hover | null>(null);
   const [tab, setTab] = useState<{ day: string; hour: number } | null>(null);
-  // Strings, not the object: a caller rebuilding `range` each render must not rebuild the grid.
+  // Values, not the object: a caller rebuilding `range` each render must not rebuild the grid.
   const from = range?.from ?? "";
   const to = range?.to ?? "";
-  const withYear = spansYears(from, to);
+  const start = range?.start;
+  const end = range?.end;
+  const zone = timezone ?? range?.timezone ?? "UTC";
   const hintId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -159,9 +162,10 @@ export function Heatmap({
   const tipRef = useRef<HTMLDivElement>(null);
 
   const model = useMemo(
-    () => buildHeatModel(cells, from, to, detailFrom, STEPS.length),
-    [cells, from, to, detailFrom],
+    () => buildHeatModel(cells, { from, to, start, end, timezone: zone }, detailFrom, STEPS.length),
+    [cells, from, to, start, end, zone, detailFrom],
   );
+  const withYear = spansYears(model?.rows.at(-1)?.day ?? from, model?.rows[0]?.day ?? to);
 
   // The tab stop survives a refresh by day; a day that left the range hands
   // it back to the first cell.
@@ -246,7 +250,7 @@ export function Heatmap({
     });
     const cell = at(el.getBoundingClientRect());
     const view = at(body.getBoundingClientRect());
-    const start = at(first.getBoundingClientRect());
+    const rowStart = at(first.getBoundingClientRect());
     setHover({
       day,
       hour,
@@ -254,8 +258,8 @@ export function Heatmap({
       cell,
       row: {
         ...cell,
-        left: start.left,
-        width: last.getBoundingClientRect().right - box.left - start.left,
+        left: rowStart.left,
+        width: last.getBoundingClientRect().right - box.left - rowStart.left,
       },
       column: { ...cell, top: view.top, height: view.height },
     });
@@ -325,6 +329,8 @@ export function Heatmap({
 
   const hoveredRow = hover ? model.byIso.get(hover.day) : undefined;
   const hoveredCell = hover && hoveredRow ? hoveredRow.hours.get(hover.hour) : undefined;
+  const hoveredExcluded =
+    hover && hoveredRow?.selectedHours !== undefined && !hoveredRow.selectedHours.has(hover.hour);
   const dayShare =
     hoveredRow && hoveredRow.total > 0 ? ((hoveredCell?.tokens ?? 0) / hoveredRow.total) * 100 : 0;
   const { pruned } = model;
@@ -333,7 +339,9 @@ export function Heatmap({
     <>
       <p className="heathint" id={hintId}>
         {[
-          `${timezone ? `Hours use your timezone (${timezone})` : zoneOf(serverOffset, localOffset)}; daily totals use UTC days. Edge rows may be partial. Repeated daylight-saving hours are combined.`,
+          model.rolling
+            ? `Hours use your timezone (${zone}). Totals count only the selected window; the first and last hours may be partial. Hatched cells are outside the selected window. Repeated daylight-saving hours are combined.`
+            : `${timezone ? `Hours use your timezone (${timezone})` : zoneOf(serverOffset, localOffset)}; daily totals use UTC days. Edge rows may be partial. Repeated daylight-saving hours are combined.`,
           !timezone &&
             model.behind &&
             "The server is behind UTC, so the bottom row is the evening before the range starts.",
@@ -366,7 +374,7 @@ export function Heatmap({
                 </span>
               ))}
               <span className="totlabel" role="columnheader">
-                day total
+                {model.rolling ? "in window" : "day total"}
               </span>
             </div>
           </div>
@@ -397,7 +405,11 @@ export function Heatmap({
                   {hh(hover.hour)}:00–{hh((hover.hour + 1) % 24)}:00
                 </span>
               </div>
-              {hoveredCell ? (
+              {hoveredExcluded ? (
+                <div className="t-row t-idle">
+                  <span>Outside the selected window</span>
+                </div>
+              ) : hoveredCell ? (
                 <>
                   <div className="t-row">
                     <span>Tokens</span>
@@ -408,17 +420,21 @@ export function Heatmap({
                     <b>{exact(hoveredCell.events)}</b>
                   </div>
                   <div className="t-row">
-                    <span>Share of day</span>
+                    <span>{model.rolling ? "Share of selected day" : "Share of day"}</span>
                     <b>{dayShare.toFixed(1)}%</b>
                   </div>
                   <div className="t-row t-sep">
-                    <span>Day total</span>
+                    <span>{model.rolling ? "Day total in window" : "Day total"}</span>
                     <b>{tokens(hoveredRow.total)}</b>
                   </div>
                 </>
               ) : (
                 <div className="t-row t-idle">
-                  <span>{hoveredRow.total ? "No activity this hour" : "No activity this day"}</span>
+                  <span>
+                    {model.rolling || hoveredRow.total
+                      ? "No activity this hour"
+                      : "No activity this day"}
+                  </span>
                 </div>
               )}
               {hoveredRow.outside && (

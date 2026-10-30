@@ -1,5 +1,7 @@
 import type { HeatCell } from "@/api";
-import { calendarDays } from "@/series";
+import { calendarDays, calendarHours } from "@/series";
+import type { DayRange } from "@/series";
+import { offsetSeconds } from "@/timezone";
 
 export type Row = {
   day: string;
@@ -8,6 +10,8 @@ export type Row = {
   total: number;
   /** A server-local day outside the selected UTC range. */
   outside: boolean;
+  /** Present for rolling windows: missing clock hours are excluded, not idle. */
+  selectedHours?: Set<number>;
 };
 
 /**
@@ -17,18 +21,36 @@ export type Row = {
  */
 export function buildHeatModel(
   cells: HeatCell[],
-  from: string,
-  to: string,
+  range: DayRange,
   detailFrom: string | undefined,
   levels: number,
 ) {
-  if (cells.length === 0) return null;
+  const { from, to, start, end, timezone = "UTC" } = range;
+  const rolling = start !== undefined && end !== undefined;
+  if (cells.length === 0 && !rolling) return null;
+
+  // Derive local dates from the exact window, not its UTC dates or the days
+  // with activity. Otherwise an idle local edge date disappears and an
+  // unrelated UTC date is drawn instead. Reuse the series' DST-aware buckets:
+  // repeated hours share a cell, nonexistent hours are never marked idle.
+  const selected = new Map<string, Set<number>>();
+  if (rolling) {
+    for (const instant of calendarHours(start, end, timezone)) {
+      const at = Date.parse(instant);
+      const local = new Date(at + offsetSeconds(at, timezone) * 1000);
+      const day = local.toISOString().slice(0, 10);
+      const hours = selected.get(day) ?? new Set<number>();
+      hours.add(local.getUTCHours());
+      selected.set(day, hours);
+    }
+    if (selected.size === 0) return null;
+  }
 
   const byDay = new Map<string, Row>();
   for (const c of cells) {
     let row = byDay.get(c.day);
     if (!row) {
-      const outside = (!!from && c.day < from) || (!!to && c.day > to);
+      const outside = !rolling && ((!!from && c.day < from) || (!!to && c.day > to));
       row = { day: c.day, weekday: c.weekday, hours: new Map(), total: 0, outside };
       byDay.set(c.day, row);
     }
@@ -42,8 +64,9 @@ export function buildHeatModel(
   const present = [...byDay.keys()].sort();
   const earliest = present[0];
   const latest = present[present.length - 1];
-  const first = from && from < earliest ? from : earliest;
-  const last = to && to > latest ? to : latest;
+  const selectedDays = [...selected.keys()].sort();
+  const first = rolling ? selectedDays[0] : from && from < earliest ? from : earliest;
+  const last = rolling ? selectedDays[selectedDays.length - 1] : to && to > latest ? to : latest;
 
   // A day with no work keeps its row: skipping it would compress an idle week
   // into a busy one. A day before detailFrom has no hourly record at all, so
@@ -51,13 +74,21 @@ export function buildHeatModel(
   const rows: Row[] = [];
   const pruned: string[] = [];
   for (const iso of calendarDays(first, last)) {
-    const row = byDay.get(iso);
-    if (row) rows.push(row);
-    else if (detailFrom && iso < detailFrom) pruned.push(iso);
-    else {
-      const weekday = new Date(`${iso}T00:00:00Z`).getUTCDay();
-      rows.push({ day: iso, weekday, hours: new Map(), total: 0, outside: false });
+    // Retention bounds are UTC dates. The API rejects unavailable rolling
+    // windows; comparing their local dates with detailFrom would hide idle
+    // hours west of UTC that still have full detail.
+    if (!rolling && !byDay.has(iso) && detailFrom && iso < detailFrom) {
+      pruned.push(iso);
+      continue;
     }
+    const row = byDay.get(iso) ?? {
+      day: iso,
+      weekday: new Date(`${iso}T00:00:00Z`).getUTCDay(),
+      hours: new Map<number, HeatCell>(),
+      total: 0,
+      outside: false,
+    };
+    rows.push({ ...row, selectedHours: rolling ? selected.get(iso) : undefined });
   }
   rows.reverse(); // newest first: the rows people care about are recent ones
 
@@ -87,13 +118,14 @@ export function buildHeatModel(
   };
 
   return {
+    rolling,
     rows,
     byIso: new Map(rows.map((r) => [r.day, r])),
     cuts,
     step,
     pruned,
     maxTotal: Math.max(...rows.map((r) => r.total), 1),
-    behind: !!from && earliest < from,
-    ahead: !!to && latest > to,
+    behind: !rolling && !!from && earliest < from,
+    ahead: !rolling && !!to && latest > to,
   };
 }
