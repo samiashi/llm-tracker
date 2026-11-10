@@ -32,6 +32,7 @@ func TestOfficialRates(t *testing.T) {
 		{"claude-haiku-4-5", 1, 5, 0.10, 1.25, 2},
 		// Fable 5.1 reads cache at 0.025x base rather than the usual 0.1x.
 		{"claude-fable-5-1", 10, 50, 0.25, 12.50, 20},
+		{"claude-fable-5-2", 8, 40, 0.20, 10, 16},
 		// Opus 5.5 reads cache at 0.05x.
 		{"claude-opus-5-5", 4, 20, 0.20, 5, 8},
 		// OpenAI prices a single cache write, so a 1h write bills as a 5m one.
