@@ -658,7 +658,7 @@ describe("the range sent to the server", () => {
     render(<App />);
     await loaded();
 
-    const box = screen.getByLabelText(label) as HTMLInputElement;
+    const box = screen.getByLabelText<HTMLInputElement>(label);
     fetch.mockClear();
     for (const partial of partials) {
       fireEvent.change(box, { target: { value: partial } });
@@ -692,7 +692,7 @@ describe("the range sent to the server", () => {
     render(<App />);
     await loaded();
 
-    const box = screen.getByLabelText("From date") as HTMLInputElement;
+    const box = screen.getByLabelText<HTMLInputElement>("From date");
     fireEvent.change(box, { target: { value: "0202-08-25" } });
     fireEvent.blur(box);
     expect(box.value).toBe("2026-08-25");
