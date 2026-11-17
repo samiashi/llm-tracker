@@ -19,7 +19,7 @@ dashboard at http://127.0.0.1:8790. Nothing is hosted anywhere else.
 
 ## Run it
 
-You need macOS, Go 1.27, Node 24, and the GitHub CLI signed in
+You need macOS, Go 1.27, Node 26 LTS, and the GitHub CLI signed in
 (`brew install gh && gh auth login`).
 
 ```bash
